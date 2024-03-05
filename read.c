@@ -18,6 +18,8 @@ this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include <assert.h>
 
+#include <glob.h>
+
 #include "filedef.h"
 #include "dep.h"
 #include "job.h"
@@ -1091,6 +1093,10 @@ eval (struct ebuffer *ebuf, int set_default)
             while (colonp && (colonp[1] == '/' || colonp[1] == '\\') &&
                    colonp > p2 && isalpha ((unsigned char)colonp[-1]) &&
                    (colonp == p2 + 1 || strchr (" \t(", colonp[-2]) != 0))
+              colonp = find_char_unquote (colonp + 1, MAP_COLON);
+#endif
+#ifdef _AMIGA
+            while (colonp && !(isspace(colonp[1]) || !colonp[1] || isspace(colonp[-1])))
               colonp = find_char_unquote (colonp + 1, MAP_COLON);
 #endif
             if (colonp != 0)

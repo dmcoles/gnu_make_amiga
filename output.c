@@ -157,7 +157,7 @@ log_working_directory (int entering)
 static void
 set_append_mode (int fd)
 {
-#if defined(F_GETFL) && defined(F_SETFL) && defined(O_APPEND)
+#if defined(F_GETFL) && defined(F_SETFL) && defined(O_APPEND) && ! defined _AMIGA
   int flags = fcntl (fd, F_GETFL, 0);
   if (flags >= 0)
     fcntl (fd, F_SETFL, flags | O_APPEND);

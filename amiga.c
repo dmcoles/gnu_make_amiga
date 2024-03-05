@@ -23,8 +23,9 @@ this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <proto/exec.h>
 #include <proto/dos.h>
 
-static const char Amiga_version[] = "$VER: Make 3.74.3 (12.05.96) \n"
-                    "Amiga Port by A. Digulla (digulla@home.lake.de)";
+static const char Amiga_version[] = "$VER: Make 4.2 (05.03.24) \n"
+                    "Amiga Port by A. Digulla (digulla@home.lake.de)\n"
+                    "Updates by Darren Coles\n";
 
 int
 MyExecute (char **argv)

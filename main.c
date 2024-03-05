@@ -46,7 +46,7 @@ this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #endif
 
 #ifdef _AMIGA
-int __stack = 20000; /* Make sure we have 20K of stack space */
+long __stack = 20000; /* Make sure we have 20K of stack space */
 #endif
 #ifdef VMS
 int vms_use_mcr_command = 0;

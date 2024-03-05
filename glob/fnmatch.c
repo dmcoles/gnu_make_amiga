@@ -30,7 +30,7 @@ USA.  */
 #include <fnmatch.h>
 #include <ctype.h>
 
-#if HAVE_STRING_H || defined _LIBC
+#if defined HAVE_STRING_H || defined _LIBC
 # include <string.h>
 #else
 # include <strings.h>

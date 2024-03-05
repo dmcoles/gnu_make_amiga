@@ -123,12 +123,12 @@ TEXI2DVI = texi2dvi
 ETAGS = etags -w
 CTAGS = ctags -w
 
-#guile = guile.o
+guile = guile.o
 
 objs = commands.o job.o dir.o file.o misc.o main.o read.o remake.o   \
        rule.o implicit.o default.o variable.o expand.o function.o    \
        vpath.o version.o ar.o arscan.o signame.o strcache.o hash.o   \
-       output.o remote-$(REMOTE).o $(GLOB) $(GETOPT) $(ALLOCA)       \
+       load.o output.o remote-$(REMOTE).o $(GETOPT) $(ALLOCA)       \
        $(extras) $(guile)
 
 srcs = $(srcdir)commands.c $(srcdir)job.c $(srcdir)dir.c             \
@@ -165,7 +165,7 @@ make.ps: make.dvi
 	dvi2ps make.dvi > make.ps
 
 make: $(objs) glob/glob.lib
-	$(CC) Link $(LDFLAGS) $(objs) $(LOADLIBES) To make.new
+	$(CC) Link $(LDFLAGS) $(objs) $(GLOB) $(LOADLIBES) To make.new
 	-delete quiet make
 	rename make.new make
 

@@ -1909,6 +1909,7 @@ func_shell_base (char *o, char **argv, int trim_newlines)
   BPTR child_stdout;
   char tmp_output[FILENAME_MAX];
   unsigned int maxlen = 200, i;
+  char **command_argv;
   int cc;
   char * buffer, * ptr;
   char ** aptr;
