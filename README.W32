@@ -1,22 +1,21 @@
-This version of GNU make has been tested on:
-  Microsoft Windows 2000/XP/2003/Vista/7/8/10
+This version of GNU Make has been tested on:
+  Microsoft Windows 2000/XP/2003/Vista/7/8/10/11
 It has also been used on Windows 95/98/NT, and on OS/2.
 
 It builds with the MinGW port of GCC (tested with GCC 3.4.2, 4.8.1,
 and 4.9.3).
 
-It also builds with MSVC 2.x, 4.x, 5.x, 6.x, 2003, and 14 (2015) as
-well as with .NET 7.x and .NET 2003.
+It also builds with MSVC 2.x, 4.x, 5.x, 6.x, 2005, 2008, 2010, 2012,
+2013, and 2015 as well as with .NET 7.x and .NET 2003.
 
-As of version 4.0, a build with Guile is supported (tested with Guile
-2.0.3).  To build with Guile, you will need, in addition to Guile
-itself, its dependency libraries and the pkg-config program.  The
-latter is used to figure out which compilation and link switches and
-libraries need to be mentioned on the compiler command lines to
-correctly link with Guile.  A Windows port of pkg-config can be found
-on ezwinports site:
+Building with Guile is supported (tested with Guile 2.0.x).  To build
+with Guile, you will need, in addition to Guile itself, its dependency
+libraries and the pkg-config program.  The latter is used to figure out
+which compilation and link switches and libraries need to be mentioned
+on the compiler command lines to correctly link with Guile.  A Windows
+port of pkg-config can be found on ezwinports site:
 
-  http://sourceforge.net/projects/ezwinports/
+  https://sourceforge.net/projects/ezwinports/
 
 The libraries on which Guile depends can vary depending on your
 version and build of Guile.  At the very least, the Boehm's GC library
@@ -26,7 +25,7 @@ also provide you with these dependencies or a URL where to download
 them.  A precompiled 32-bit Windows build of Guile is available from
 the ezwinports site mentioned above.
 
-The Windows port of GNU make is maintained jointly by various people.
+The Windows port of GNU Make is maintained jointly by various people.
 It was originally made by Rob Tulloh.
 It is currently maintained by Eli Zaretskii.
 
@@ -34,20 +33,14 @@ It is currently maintained by Eli Zaretskii.
 Do this first, regardless of the build method you choose:
 ---------------------------------------------------------
 
- 1. Edit config.h.W32 to your liking (especially the few shell-related
-    defines near the end, or HAVE_CASE_INSENSITIVE_FS which corresponds
-    to './configure --enable-case-insensitive-file-system').  (We don't
-    recommend to define HAVE_CASE_INSENSITIVE_FS, but you may wish to
-    consider that if you have a lot of files whose names are in upper
-    case, while Makefile rules are written for lower-case versions.)
+ 1. If you have special requirements, edit config.h.W32 to your liking
+    (especially the shell-related defines, or HAVE_CASE_INSENSITIVE_FS which
+    corresponds to './configure --enable-case-insensitive-file-system').  We
+    don't recommend to define HAVE_CASE_INSENSITIVE_FS, but you may wish to
+    consider that if you have a lot of files whose names are in upper case,
+    while Makefile rules are written for lower-case versions.
 
-
-Using make_msvc_net2003.vcproj
-------------------------------
-
- 2. Open make_msvc_net2003.vcproj in MSVS71 or MSVC71 or any compatible IDE,
-    then build this project as usual.  There's also a solution file for
-    Studio 2003.
+    If you don't have special requirements no changes are needed.
 
 
 Building with (MinGW-)GCC using build_w32.bat
@@ -56,51 +49,116 @@ Building with (MinGW-)GCC using build_w32.bat
  2. Open a W32 command prompt for your installed (MinGW-)GCC, setup a
     correct PATH and other environment variables for it, then execute ...
 
-        build_w32.bat gcc
+        .\build_w32.bat gcc
 
     This produces gnumake.exe in the GccRel directory.
-    If you want a version of GNU make built with debugging enabled,
-    add the --debug option.
+
+    If you want a version of GNU Make built with debugging enabled,
+    add the --debug option.  Output goes into the GccDebug directory.
 
     The batch file will probe for Guile installation, and will build
     gnumake.exe with Guile if it finds it.  If you have Guile
     installed, but want to build Make without Guile support, type
 
-        build_w32.bat --without-guile gcc
+        .\build_w32.bat --without-guile gcc
 
 
-Building with (MSVC++-)cl using build_w32.bat or NMakefile
-----------------------------------------------------------
+Building with (MSVC++-)cl using build_w32.bat
+---------------------------------------------
 
- 2. Open a W32 command prompt for your installed (MSVC++-)cl, setup a
-    correct PATH and other environment variables for it (usually via
-    executing vcvars32.bat or vsvars32.bat from the cl-installation,
-    e.g. "%VS71COMNTOOLS%vsvars32.bat"; or using a corresponding start
-    menue entry from the cl-installation), then execute EITHER ...
+ 2. Open a command shell, then execute ...
 
-        build_w32.bat
+        .\build_w32.bat
 
-    This produces gnumake.exe in the WinRel directory.
-    If you want a version of GNU make built with debugging enabled,
-    add the --debug option.
+    This produces a 64bit Release build of gnumake.exe in .\WinRel, using
+    the compiler found on the %Path%.  If no compiler is found, the batch
+    file will probe your system and choose the newest MSVC version it can
+    find.
 
-    ... OR ...
+    If you want a 32bit version of GNU Make, add the --x86 option.
 
-        nmake /f NMakefile
-
-    (this produces WinDebug/make.exe and WinRel/make.exe).
+    If you want a Debug build of GNU Make, add the --debug option.  Output
+    will go into the .\WinDebug directory.
 
     The batch file will probe for Guile installation, and will build
-    gnumake.exe with Guile if it finds it.  If you have Guile
-    installed, but want to build Make without Guile support, type
+    gnumake.exe with Guile if it finds it.  If Guile is installed,
+    but you prefer to build GNU Make without Guile support, add the
+    --without-guile option.
 
-        build_w32.bat --without-guile
+
+Building with (MinGW-)GCC using GNU Make
+----------------------------------------
+
+ 2. If you already have a version of GNU Make available you can use it
+    to build this version.  Open a W32 command prompt for your installed
+    (MinGW-)GCC, setup a correct PATH and other environment variables
+    for it, then execute ...
+
+        make -f Basic.mk TOOLCHAIN=gcc
+
+    This produces GccRel\gnumake.exe.
+    If you want a version of GNU Make built with debugging enabled,
+    add the TARGET_TYPE=debug option:
+
+        make -f Basic.mk TOOLCHAIN=gcc TARGET_TYPE=debug
+
+    The makefile doesn't support Guile integration.  Use build_w32.bat
+    if you want to build with Guile support.
+
+
+Building with (MSVC++-)cl using GNU Make
+----------------------------------------
+
+ 2. If you already have a version of GNU Make available you can use it
+    to build this version.  Open a W32 command prompt for your installed
+    (MSVC++-)cl, setup a correct PATH and other environment variables
+    for it (usually via executing vcvars32.bat or vsvars32.bat from the
+    cl-installation, or using a corresponding start menu entry from the
+    cl-installation), then execute ...
+
+        make -f Basic.mk
+
+    This produces an optimized WinRel/gnumake.exe.
+    If you want a version of GNU Make built with debugging enabled,
+    add the TARGET_TYPE=debug option:
+
+        make -f Basic.mk TARGET_TYPE=debug
+
+    The makefile doesn't support Guile integration.  Use build_w32.bat
+    if you want to build with Guile support.
+
+
+Running the test suite
+----------------------
+
+ 3. You will need an installation of Perl.  Be sure to use a relatively
+    modern version: older versions will sometimes throw spurious errors.
+
+    To run the suite after building using GNU Make, use:
+
+        make -f Basic.mk check
+
+    Alternatively if you'd like to run tests by hand, use:
+
+        cd tests
+        .\run_make_tests.bat -make <path-to-make>
+
+    I've found <path-to-make> seems to want forward-slashes in the path.
+    For example if building with .\build_w32.bat non-debug, use:
+
+        cd tests
+        .\run_make_tests.bat -make ../WinRel/gnumake.exe
+
+    I've tested this with the MSYS2 shell and POSIX tools installation
+    that you get by installing Git for Windows.
+
+
 
 -------------------
 -- Notes/Caveats --
 -------------------
 
-GNU make on Windows 32-bit platforms:
+GNU Make on Windows 32-bit platforms:
 
         This version of make is ported natively to Windows32 platforms
         (Windows NT 3.51, Windows NT 4.0, Windows 2000, Windows XP,
@@ -110,11 +168,11 @@ GNU make on Windows 32-bit platforms:
         officially are the MinGW port of GNU GCC, and the various
         versions of the Microsoft C compiler.
 
-        Do not confuse this port of GNU make with other Windows32 projects
-        which provide a GNU make binary. These are separate projects
+        Do not confuse this port of GNU Make with other Windows32 projects
+        which provide a GNU Make binary. These are separate projects
         and are not connected to this port effort.
 
-GNU make and sh.exe:
+GNU Make and sh.exe:
 
         This port prefers if you have a working sh.exe somewhere on
         your system. If you don't have sh.exe, the port falls back to
@@ -124,12 +182,12 @@ GNU make and sh.exe:
 
         There are very few true ports of Bourne shell for NT right now.
         There is a version of GNU bash available from Cygnus "Cygwin"
-        porting effort (http://www.cygwin.com/).
+        porting effort (https://www.cygwin.com/).
         Other possibilities are the MKS version of sh.exe, or building
         your own with a package like NutCracker (DataFocus) or Portage
-        (Consensys).  Also MinGW includes sh (http://mingw.org/).
+        (Consensys).  Also MinGW includes sh.
 
-GNU make and brain-dead shells (BATCH_MODE_ONLY_SHELL):
+GNU Make and brain-dead shells (BATCH_MODE_ONLY_SHELL):
 
         Some versions of Bourne shell do not behave well when invoked
         as 'sh -c' from CreateProcess().  The main problem is they seem
@@ -152,26 +210,24 @@ GNU make and brain-dead shells (BATCH_MODE_ONLY_SHELL):
 
 Support for parallel builds
 
-        Parallel builds (-jN) are supported in this port, with 1
-        limitation: The number of concurrent processes has a hard
-        limit of 64, due to the way this port implements waiting for
-        its subprocesses.
+        Parallel builds (-jN) are supported in this port.  The number of
+        concurrent processes has a hard limit of 4095.
 
-GNU make and Cygnus GNU Windows32 tools:
+GNU Make and Cygnus GNU Windows32 tools:
 
         Good news! Make now has native support for Cygwin sh. To enable,
         define the HAVE_CYGWIN_SHELL in config.h and rebuild make
         from scratch. This version of make tested with B20.1 of Cygwin.
         Do not define BATCH_MODE_ONLY_SHELL if you use HAVE_CYGWIN_SHELL.
 
-GNU make and the MKS shell:
+GNU Make and the MKS shell:
 
         There is now semi-official support for the MKS shell. To turn this
         support on, define HAVE_MKS_SHELL in the config.h.W32 before you
         build make.  Do not define BATCH_MODE_ONLY_SHELL if you turn
         on HAVE_MKS_SHELL.
 
-GNU make handling of drive letters in pathnames (PATH, vpath, VPATH):
+GNU Make handling of drive letters in pathnames (PATH, vpath, VPATH):
 
         There is a caveat that should be noted with respect to handling
         single character pathnames on Windows systems.  When colon is
@@ -209,13 +265,6 @@ GNU make handling of drive letters in pathnames (PATH, vpath, VPATH):
         both Unix and Windows systems, then no ifdef'ing will be
         necessary in the makefile source.
 
-GNU make test suite:
-
-        I verified all functionality with a slightly modified version
-        of make-test-4.2 (modifications to get test suite to run
-        on Windows NT). All tests pass in an environment that includes
-        sh.exe.  Tests were performed on both Windows NT and Windows 95.
-
 Pathnames and white space:
 
         Unlike Unix, Windows 95/NT systems encourage pathnames which
@@ -244,7 +293,7 @@ Pathnames and Case insensitivity:
         the file with other case permutations will succeed (i.e. opening a
         file named "target" or "TARGET" will open the file "Target").
 
-        By default, GNU make retains its case sensitivity when comparing
+        By default, GNU Make retains its case sensitivity when comparing
         target names and existing files or directories.  It can be
         configured, however, into a case preserving and case insensitive
         mode by adding a define for HAVE_CASE_INSENSITIVE_FS to
@@ -262,10 +311,10 @@ Pathnames and Case insensitivity:
         SUBDIR/DepTarget: SubDir/TARGET
                 cp $^ $@
 
-        Reliance on this behavior also eliminates the ability of GNU make
+        Reliance on this behavior also eliminates the ability of GNU Make
         to use case in comparison of matching rules.  For example, it is
         not possible to set up a C++ rule using %.C that is different
-        than a C rule using %.c.  GNU make will consider these to be the
+        than a C rule using %.c.  GNU Make will consider these to be the
         same rule and will issue a warning.
 
 SAMBA/NTFS/VFAT:
@@ -295,10 +344,10 @@ FAT:
 Bug reports:
 
         Please submit bugs via the normal bug reporting mechanism which
-        is described in the GNU make manual and the base README.
+        is described in the GNU Make manual and the base README.
 
 -------------------------------------------------------------------------------
-Copyright (C) 1996-2016 Free Software Foundation, Inc.
+Copyright (C) 1996-2023 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -311,4 +360,4 @@ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
 A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License along with
-this program.  If not, see <http://www.gnu.org/licenses/>.
+this program.  If not, see <https://www.gnu.org/licenses/>.
