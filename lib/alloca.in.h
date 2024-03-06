@@ -32,6 +32,7 @@
        request, the program just crashes.
  */
 
+#ifndef _AMIGA
 #ifndef alloca
   /* Some version of mingw have an <alloca.h> that causes trouble when
      included after 'alloca' gets defined as a macro.  As a workaround,
@@ -40,6 +41,7 @@
 # if defined __GNUC__ && (defined _WIN32 && ! defined __CYGWIN__) && @HAVE_ALLOCA_H@
 #  include_next <alloca.h>
 # endif
+#endif
 #endif
 #ifndef alloca
 # if defined __GNUC__ || (__clang_major__ >= 4)

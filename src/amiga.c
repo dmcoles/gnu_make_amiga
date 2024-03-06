@@ -23,8 +23,18 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <proto/exec.h>
 #include <proto/dos.h>
 
-static const char Amiga_version[] = "$VER: Make 3.74.3 (12.05.96) \n"
-                    "Amiga Port by A. Digulla (digulla@home.lake.de)";
+
+long long int strtoll(const char* str, char** endptr, int base)
+{
+  return strtol(str,endptr,base);
+}
+void memory_full() {
+  abort();
+}
+
+static const char Amiga_version[] = "$VER: Make 4.4.1 (06.03.24) \n"
+                    "Amiga Port by A. Digulla (digulla@home.lake.de)\n"
+                    "Updates by Darren Coles\n";
 
 int
 MyExecute (char **argv)
@@ -88,6 +98,9 @@ wildcard_expansion (char *wc, char *o)
 {
 #   define PATH_SIZE    1024
     struct AnchorPath * apath;
+
+    //dirty hack to handle ./
+    if (!strncmp(wc,"./",2)) wc = wc +2;
 
     if ( (apath = AllocMem (sizeof (struct AnchorPath) + PATH_SIZE,
             MEMF_CLEAR))

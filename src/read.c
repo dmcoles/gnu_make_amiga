@@ -1110,7 +1110,10 @@ eval (struct ebuffer *ebuf, int set_default)
                      (colonp == p2 + 1 || strchr (" \t(", colonp[-2]) != 0))
                 colonp = find_char_unquote (colonp + 1, ':');
 #endif
-
+#ifdef _AMIGA
+            while (colonp && !(isspace(colonp[1]) || !colonp[1] || isspace(colonp[-1])))
+              colonp = find_char_unquote (colonp + 1, ':');
+#endif
             if (colonp)
               {
                 /* If the previous character is '&', back up before '&:' */
@@ -3267,7 +3270,7 @@ parse_file_seq (char **stringp, size_t size, int stopmap,
 #endif
 #ifdef _AMIGA
       /* If we stopped due to a device name, skip it.  */
-      if (p && p != s+1 && p[0] == ':')
+      if (p && p != s+1 && p[0] == ':' && !(ISSPACE (p[1]) || !p[1] || ISSPACE (p[-1])))
         p = find_map_unquote (p+1, findmap);
 #endif
 #ifdef HAVE_DOS_PATHS

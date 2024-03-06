@@ -102,6 +102,7 @@ recursively_expand_for_file (struct variable *v, struct file *file)
   struct variable_set_list *save = 0;
   int set_reading = 0;
 
+#ifndef _AMIGA
   /* If we're expanding to put into the environment of a shell function then
      ignore any recursion issues: for backward-compatibility we will use
      the value of the environment variable we were started with.  */
@@ -124,7 +125,7 @@ recursively_expand_for_file (struct variable *v, struct file *file)
          but getting that to work would be involved. */
       return xstrdup ("");
     }
-
+#endif
   /* Don't install a new location if this location is empty.
      This can happen for command-line variables, builtin variables, etc.  */
   saved_varp = expanding_var;

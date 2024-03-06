@@ -250,7 +250,11 @@ pid_t getpid ();
 
 pid_t make_pid ()
 {
+#ifdef _AMIGA
+  return rand (1000);
+#else
   return getpid ();
+#endif
 }
 
 /* Like malloc but get fatal error if memory is exhausted.  */
@@ -920,7 +924,9 @@ stpcpy (char *dest, const char *src)
 # undef USE_NUMBER_GROUPING
 # undef USE_WIDE_CHAR
 # define QUAD 1
+#ifndef _AMIGA
 # include <strtol.c>
+#endif
 #endif
 
 #if !HAVE_STRERROR

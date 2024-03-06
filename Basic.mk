@@ -142,7 +142,7 @@ $(OBJECTS): $(SRCDIR)/src/mkconfig.h
 
 # src/.deps/ar.Po
 $(OUTDIR)src/ar.$(OBJEXT): $(SRCDIR)/src/ar.c $(SRCDIR)/src/makeint.h $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h \
+ $(SRCDIR)/src/mkcustom.h \
   \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
@@ -152,7 +152,7 @@ $(OUTDIR)src/ar.$(OBJEXT): $(SRCDIR)/src/ar.c $(SRCDIR)/src/makeint.h $(OUTDIR)s
 # src/.deps/arscan.Po
 $(OUTDIR)src/arscan.$(OBJEXT): $(SRCDIR)/src/arscan.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/lib/intprops.h $(SRCDIR)/lib/intprops-internal.h $(SRCDIR)/src/output.h
@@ -160,7 +160,7 @@ $(OUTDIR)src/arscan.$(OBJEXT): $(SRCDIR)/src/arscan.c $(SRCDIR)/src/makeint.h \
 # src/.deps/commands.Po
 $(OUTDIR)src/commands.$(OBJEXT): $(SRCDIR)/src/commands.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h \
@@ -169,7 +169,7 @@ $(OUTDIR)src/commands.$(OBJEXT): $(SRCDIR)/src/commands.c $(SRCDIR)/src/makeint.
 # src/.deps/default.Po
 $(OUTDIR)src/default.$(OBJEXT): $(SRCDIR)/src/default.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h $(SRCDIR)/src/variable.h $(SRCDIR)/src/rule.h $(SRCDIR)/src/dep.h $(SRCDIR)/src/job.h \
@@ -178,7 +178,7 @@ $(OUTDIR)src/default.$(OBJEXT): $(SRCDIR)/src/default.c $(SRCDIR)/src/makeint.h 
 # src/.deps/dir.Po
 $(OUTDIR)src/dir.$(OBJEXT): $(SRCDIR)/src/dir.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/hash.h $(SRCDIR)/src/filedef.h \
@@ -187,7 +187,7 @@ $(OUTDIR)src/dir.$(OBJEXT): $(SRCDIR)/src/dir.c $(SRCDIR)/src/makeint.h \
 # src/.deps/expand.Po
 $(OUTDIR)src/expand.$(OBJEXT): $(SRCDIR)/src/expand.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/commands.h $(SRCDIR)/src/debug.h $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h $(SRCDIR)/src/job.h \
@@ -196,7 +196,7 @@ $(OUTDIR)src/expand.$(OBJEXT): $(SRCDIR)/src/expand.c $(SRCDIR)/src/makeint.h \
 # src/.deps/file.Po
 $(OUTDIR)src/file.$(OBJEXT): $(SRCDIR)/src/file.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h $(SRCDIR)/src/dep.h $(SRCDIR)/src/job.h $(SRCDIR)/src/output.h $(SRCDIR)/src/commands.h \
@@ -205,7 +205,7 @@ $(OUTDIR)src/file.$(OBJEXT): $(SRCDIR)/src/file.c $(SRCDIR)/src/makeint.h \
 # src/.deps/function.Po
 $(OUTDIR)src/function.$(OBJEXT): $(SRCDIR)/src/function.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h \
@@ -214,19 +214,19 @@ $(OUTDIR)src/function.$(OBJEXT): $(SRCDIR)/src/function.c $(SRCDIR)/src/makeint.
 
 # src/.deps/getopt.Po
 $(OUTDIR)src/getopt.$(OBJEXT): $(SRCDIR)/src/getopt.c $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h \
+ $(SRCDIR)/src/mkcustom.h \
   \
 
 # src/.deps/getopt1.Po
 $(OUTDIR)src/getopt1.$(OBJEXT): $(SRCDIR)/src/getopt1.c $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h \
+ $(SRCDIR)/src/mkcustom.h \
   \
  $(SRCDIR)/src/getopt.h \
 
 # src/.deps/guile.Po
 $(OUTDIR)src/guile.$(OBJEXT): $(SRCDIR)/src/guile.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/debug.h $(SRCDIR)/src/filedef.h \
@@ -236,7 +236,7 @@ $(OUTDIR)src/guile.$(OBJEXT): $(SRCDIR)/src/guile.c $(SRCDIR)/src/makeint.h \
 # src/.deps/hash.Po
 $(OUTDIR)src/hash.$(OBJEXT): $(SRCDIR)/src/hash.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/hash.h \
@@ -244,7 +244,7 @@ $(OUTDIR)src/hash.$(OBJEXT): $(SRCDIR)/src/hash.c $(SRCDIR)/src/makeint.h \
 # src/.deps/implicit.Po
 $(OUTDIR)src/implicit.$(OBJEXT): $(SRCDIR)/src/implicit.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h \
@@ -254,7 +254,7 @@ $(OUTDIR)src/implicit.$(OBJEXT): $(SRCDIR)/src/implicit.c $(SRCDIR)/src/makeint.
 # src/.deps/job.Po
 $(OUTDIR)src/job.$(OBJEXT): $(SRCDIR)/src/job.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/job.h $(SRCDIR)/src/output.h $(SRCDIR)/src/debug.h $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h \
@@ -264,7 +264,7 @@ $(OUTDIR)src/job.$(OBJEXT): $(SRCDIR)/src/job.c $(SRCDIR)/src/makeint.h \
 # src/.deps/load.Po
 $(OUTDIR)src/load.$(OBJEXT): $(SRCDIR)/src/load.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/debug.h \
@@ -273,7 +273,7 @@ $(OUTDIR)src/load.$(OBJEXT): $(SRCDIR)/src/load.c $(SRCDIR)/src/makeint.h \
 # src/.deps/loadapi.Po
 $(OUTDIR)src/loadapi.$(OBJEXT): $(SRCDIR)/src/loadapi.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h \
@@ -282,7 +282,7 @@ $(OUTDIR)src/loadapi.$(OBJEXT): $(SRCDIR)/src/loadapi.c $(SRCDIR)/src/makeint.h 
 # src/.deps/main.Po
 $(OUTDIR)src/main.$(OBJEXT): $(SRCDIR)/src/main.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/os.h $(SRCDIR)/src/filedef.h \
@@ -292,7 +292,7 @@ $(OUTDIR)src/main.$(OBJEXT): $(SRCDIR)/src/main.c $(SRCDIR)/src/makeint.h \
 # src/.deps/misc.Po
 $(OUTDIR)src/misc.$(OBJEXT): $(SRCDIR)/src/misc.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h \
@@ -301,7 +301,7 @@ $(OUTDIR)src/misc.$(OBJEXT): $(SRCDIR)/src/misc.c $(SRCDIR)/src/makeint.h \
 # src/.deps/output.Po
 $(OUTDIR)src/output.$(OBJEXT): $(SRCDIR)/src/output.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/os.h $(SRCDIR)/src/output.h \
@@ -309,7 +309,7 @@ $(OUTDIR)src/output.$(OBJEXT): $(SRCDIR)/src/output.c $(SRCDIR)/src/makeint.h \
 # src/.deps/posixos.Po
 $(OUTDIR)src/posixos.$(OBJEXT): $(SRCDIR)/src/posixos.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/debug.h $(SRCDIR)/src/job.h $(SRCDIR)/src/output.h $(SRCDIR)/src/os.h
@@ -317,7 +317,7 @@ $(OUTDIR)src/posixos.$(OBJEXT): $(SRCDIR)/src/posixos.c $(SRCDIR)/src/makeint.h 
 # src/.deps/read.Po
 $(OUTDIR)src/read.$(OBJEXT): $(SRCDIR)/src/read.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h $(SRCDIR)/src/dep.h $(SRCDIR)/src/job.h $(SRCDIR)/src/output.h $(SRCDIR)/src/os.h \
@@ -326,7 +326,7 @@ $(OUTDIR)src/read.$(OBJEXT): $(SRCDIR)/src/read.c $(SRCDIR)/src/makeint.h \
 # src/.deps/remake.Po
 $(OUTDIR)src/remake.$(OBJEXT): $(SRCDIR)/src/remake.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h \
@@ -339,7 +339,7 @@ $(OUTDIR)src/remake.$(OBJEXT): $(SRCDIR)/src/remake.c $(SRCDIR)/src/makeint.h \
 # src/.deps/remote-stub.Po
 $(OUTDIR)src/remote-stub.$(OBJEXT): $(SRCDIR)/src/remote-stub.c \
  $(SRCDIR)/src/makeint.h $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h \
+ $(SRCDIR)/src/mkcustom.h \
   \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
@@ -349,7 +349,7 @@ $(OUTDIR)src/remote-stub.$(OBJEXT): $(SRCDIR)/src/remote-stub.c \
 # src/.deps/rule.Po
 $(OUTDIR)src/rule.$(OBJEXT): $(SRCDIR)/src/rule.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h $(SRCDIR)/src/dep.h $(SRCDIR)/src/job.h $(SRCDIR)/src/output.h $(SRCDIR)/src/commands.h \
@@ -358,7 +358,7 @@ $(OUTDIR)src/rule.$(OBJEXT): $(SRCDIR)/src/rule.c $(SRCDIR)/src/makeint.h \
 # src/.deps/shuffle.Po
 $(OUTDIR)src/shuffle.$(OBJEXT): $(SRCDIR)/src/shuffle.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/shuffle.h $(SRCDIR)/src/filedef.h \
@@ -367,14 +367,14 @@ $(OUTDIR)src/shuffle.$(OBJEXT): $(SRCDIR)/src/shuffle.c $(SRCDIR)/src/makeint.h 
 # src/.deps/signame.Po
 $(OUTDIR)src/signame.$(OBJEXT): $(SRCDIR)/src/signame.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
 
 # src/.deps/strcache.Po
 $(OUTDIR)src/strcache.$(OBJEXT): $(SRCDIR)/src/strcache.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/hash.h
@@ -382,7 +382,7 @@ $(OUTDIR)src/strcache.$(OBJEXT): $(SRCDIR)/src/strcache.c $(SRCDIR)/src/makeint.
 # src/.deps/variable.Po
 $(OUTDIR)src/variable.$(OBJEXT): $(SRCDIR)/src/variable.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h $(SRCDIR)/src/debug.h $(SRCDIR)/src/dep.h $(SRCDIR)/src/job.h $(SRCDIR)/src/output.h \
@@ -390,7 +390,7 @@ $(OUTDIR)src/variable.$(OBJEXT): $(SRCDIR)/src/variable.c $(SRCDIR)/src/makeint.
 
 # src/.deps/version.Po
 $(OUTDIR)src/version.$(OBJEXT): $(SRCDIR)/src/version.c $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h \
+ $(SRCDIR)/src/mkcustom.h \
  
 
 # src/.deps/vms_exit.Po
@@ -411,7 +411,7 @@ $(OUTDIR)src/version.$(OBJEXT): $(SRCDIR)/src/version.c $(OUTDIR)src/config.h \
 # src/.deps/vpath.Po
 $(OUTDIR)src/vpath.$(OBJEXT): $(SRCDIR)/src/vpath.c $(SRCDIR)/src/makeint.h \
  $(OUTDIR)src/config.h \
- $(SRCDIR)/src/../src/mkcustom.h  \
+ $(SRCDIR)/src/mkcustom.h  \
  $(SRCDIR)/src/gnumake.h \
  $(SRCDIR)/src/gettext.h \
  $(SRCDIR)/src/filedef.h $(SRCDIR)/src/hash.h \

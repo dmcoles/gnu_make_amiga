@@ -2035,6 +2035,7 @@ func_shell_base (char *o, char **argv, int trim_newlines)
   char ** aptr;
   size_t len = 0;
   char* batch_filename = NULL;
+  char **command_argv = NULL;
 
   /* Construct the argument list.  */
   command_argv = construct_command_argv (argv[0], NULL, NULL, 0,

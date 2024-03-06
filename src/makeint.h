@@ -574,11 +574,15 @@ void pfatal_with_name (const char *) NORETURN;
 void perror_with_name (const char *, const char *);
 #define xstrlen(_s) ((_s)==NULL ? 0 : strlen (_s))
 unsigned int make_toui (const char*, const char**);
+#ifndef _AMIGA
 char *make_lltoa (long long, char *);
 char *make_ulltoa (unsigned long long, char *);
+#endif
 void make_seed (unsigned int);
 unsigned int make_rand (void);
+#ifndef _AMIGA
 pid_t make_pid (void);
+#endif
 void *xmalloc (size_t);
 void *xcalloc (size_t);
 void *xrealloc (void *, size_t);
@@ -687,7 +691,7 @@ long int lseek ();
 # endif
 
 # ifdef  HAVE_GETCWD
-#  if !defined(VMS) && !defined(__DECC)
+#  if !defined(VMS) && !defined(__DECC) && !defined(_AMIGA)
 char *getcwd (void);
 #  endif
 # else
