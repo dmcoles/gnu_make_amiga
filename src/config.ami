@@ -331,4 +331,12 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #define ssize_t int
 
 /* Include customized declarations.  */
-#include "../src/mkcustom.h"
+#include "src/mkcustom.h"
+
+/* Use high resolution file timestamps if nonzero. */
+#define FILE_TIMESTAMP_HI_RES 0
+
+/* Define to the installation directory for locales.  */
+#define LOCALEDIR ""
+
+#define ENOSYS 88

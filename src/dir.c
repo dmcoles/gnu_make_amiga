@@ -174,6 +174,7 @@ vms_hash (const char *name)
 {
   int h = 0;
 
+
   while (*name)
     {
       unsigned char uc = (unsigned char) *name;
@@ -478,6 +479,10 @@ find_directory (const char *name)
 #ifdef WINDOWS32
   char *w32_path;
 #endif
+#ifdef AMIGA
+  int x,h,g;
+	unsigned char uc;
+#endif
 
   dir_key.name = name;
   dir_slot = (struct directory **) hash_find_slot (&directories, &dir_key);
@@ -558,6 +563,21 @@ find_directory (const char *name)
   dc_key.ino[2] = st.st_ino[2];
 # else
   dc_key.ino = st.st_ino;
+#ifdef AMIGA
+  for (x=0; x <strlen(name); x++) {
+  	uc = (unsigned char) name[x];
+		h = (h << 4) + (isupper (uc) ? tolower (uc) : uc);
+      g = h & 0xf0000000;
+      if (g)
+        {
+          h = h ^ (g >> 24);
+          h = h ^ g;
+        }
+	}
+
+	dc_key.ino ^= h;
+
+#endif
 # endif
 #endif
   dc_slot = (struct directory_contents **) hash_find_slot (&directory_contents, &dc_key);
@@ -648,7 +668,7 @@ dir_contents_file_exists_p (struct directory *dir,
   if (dc == NULL || dc->dirfiles.ht_vec == NULL)
     /* The directory could not be stat'd or opened.  */
     return 0;
-
+	
 #ifdef __MSDOS__
   filename = dosify (filename);
 #endif
@@ -681,7 +701,7 @@ dir_contents_file_exists_p (struct directory *dir,
       df = hash_find_item (&dc->dirfiles, &dirfile_key);
       if (df)
         return !df->impossible;
-    }
+			}
 
   /* The file was not found in the hashed list.
      Try to read the directory further.  */
@@ -716,12 +736,12 @@ dir_contents_file_exists_p (struct directory *dir,
           dc->dirstream = opendir (dc->path_key);
           if (!dc->dirstream)
             return 0;
-        }
+					}
       else
 #endif
         /* The directory has been all read in.  */
         return 0;
-    }
+				}
 
   while (1)
     {
@@ -780,7 +800,7 @@ dir_contents_file_exists_p (struct directory *dir,
       /* Check if the name matches the one we're searching for.  */
       if (filename != NULL && patheq (d->d_name, filename))
         return 1;
-    }
+			}
 
   /* If the directory has been completely read in,
      close the stream and reset the pointer to nil.  */
