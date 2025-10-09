@@ -1,5 +1,5 @@
 /* Pattern and suffix rule internals for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -16,14 +16,15 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "makeint.h"
 
+#include "rule.h"
+
 #include <assert.h>
 
-#include "filedef.h"
-#include "dep.h"
-#include "job.h"
 #include "commands.h"
+#include "dep.h"
+#include "filedef.h"
+#include "job.h"
 #include "variable.h"
-#include "rule.h"
 
 static void freerule (struct rule *rule, struct rule *lastrule);
 
@@ -55,10 +56,6 @@ size_t max_pattern_dep_length;
    whose dependencies are the suffixes to be searched.  */
 
 struct file *suffix_file;
-
-/* Maximum length of a suffix.  */
-
-static size_t maxsuffix;
 
 /* Return the rule definition: space separated rule targets, followed by
    either a colon or two colons in the case of a terminal rule, followed by
@@ -140,6 +137,12 @@ snap_implicit_rules (void)
       const char *d = dep_name (dep);
       size_t l = strlen (d);
 
+      if (second_expansion)
+        {
+          if (!dep->name)
+            dep->name = xstrdup (dep->file->name);
+          dep->need_2nd_expansion = 1;
+        }
       if (dep->need_2nd_expansion)
         /* When pattern_search allocates a buffer, allow 5 bytes per each % to
            substitute each % with $(*F) while avoiding realloc.  */
@@ -171,7 +174,7 @@ snap_implicit_rules (void)
           const char *dname = dep_name (dep);
           size_t len = strlen (dname);
 
-#ifdef VMS
+#if MK_OS_VMS
           const char *p = strrchr (dname, ']');
           const char *p2;
           if (p == 0)
@@ -250,7 +253,7 @@ convert_suffix_rule (const char *target, const char *source,
     {
       /* Special case: TARGET being nil means we are defining a '.X.a' suffix
          rule; the target pattern is always '(%.o)'.  */
-#ifdef VMS
+#if MK_OS_VMS
       *names = strcache_add_len ("(%.obj)", 7);
 #else
       *names = strcache_add_len ("(%.o)", 5);
@@ -298,7 +301,7 @@ convert_to_pattern (void)
      suffixes in the .SUFFIXES target's dependencies and see if it exists.
      First find the longest of the suffixes.  */
 
-  maxsuffix = 0;
+  size_t maxsuffix = 0;
   for (d = suffix_file->deps; d != 0; d = d->next)
     {
       size_t l = strlen (dep_name (d));
@@ -311,6 +314,7 @@ convert_to_pattern (void)
 
   for (d = suffix_file->deps; d != 0; d = d->next)
     {
+      struct file *f;
       size_t slen;
 
       /* Make a rule that is just the suffix, with no deps or commands.
@@ -321,14 +325,26 @@ convert_to_pattern (void)
         /* Record a pattern for this suffix's null-suffix rule.  */
         convert_suffix_rule ("", dep_name (d), d->file->cmds);
 
+      slen = strlen (dep_name (d));
+      memcpy (rulename, dep_name (d), slen + 1);
+
+      f = lookup_file (rulename);
+      if (f && f->cmds)
+        {
+          if (!f->deps)
+            f->suffix = 1;
+          else if (!posix_pedantic)
+            {
+              O (error, &f->cmds->fileinfo,
+                 _("warning: ignoring prerequisites on suffix rule definition"));
+              f->suffix = 1;
+            }
+        }
+
       /* Add every other suffix to this one and see if it exists as a
          two-suffix rule.  */
-      slen = strlen (dep_name (d));
-      memcpy (rulename, dep_name (d), slen);
-
       for (d2 = suffix_file->deps; d2 != 0; d2 = d2->next)
         {
-          struct file *f;
           size_t s2len;
 
           s2len = strlen (dep_name (d2));
@@ -353,9 +369,11 @@ convert_to_pattern (void)
             {
               if (posix_pedantic)
                 continue;
-              error (&f->cmds->fileinfo, 0,
-                     _("warning: ignoring prerequisites on suffix rule definition"));
+              O (error, &f->cmds->fileinfo,
+                 _("warning: ignoring prerequisites on suffix rule definition"));
             }
+
+          f->suffix = 1;
 
           if (s2len == 2 && rulename[slen] == '.' && rulename[slen + 1] == 'a')
             /* A suffix rule '.X.a:' generates the pattern rule '(%.o): %.X'.
@@ -455,7 +473,7 @@ new_pattern_rule (struct rule *rule, int override)
    TERMINAL specifies what the 'terminal' field of the rule should be.  */
 
 void
-install_pattern_rule (struct pspec *p, int terminal)
+install_pattern_rule (const struct pspec *p, int terminal)
 {
   struct rule *r;
   const char *ptr;
@@ -616,7 +634,7 @@ print_rule_data_base (void)
       /* This can happen if a fatal error was detected while reading the
          makefiles and thus count_implicit_rule_limits wasn't called yet.  */
       if (num_pattern_rules != 0)
-        ONN (fatal, NILF, _("BUG: num_pattern_rules is wrong!  %u != %u"),
+        ONN (fatal, NILF, "INTERNAL: num_pattern_rules is wrong!  %u != %u",
              num_pattern_rules, rules);
     }
 }

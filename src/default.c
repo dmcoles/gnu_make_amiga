@@ -1,5 +1,5 @@
 /* Data base of default implicit rules for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -18,16 +18,16 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <assert.h>
 
-#include "filedef.h"
-#include "variable.h"
-#include "rule.h"
-#include "dep.h"
-#include "job.h"
 #include "commands.h"
+#include "dep.h"
+#include "filedef.h"
+#include "job.h"
+#include "rule.h"
+#include "variable.h"
 
 /* Define GCC_IS_NATIVE if gcc is the native development environment on
    your system (gcc/bison/flex vs cc/yacc/lex).  */
-#if defined(__MSDOS__) || defined(__EMX__)
+#if MK_OS_DOS || MK_OS_OS2
 # define GCC_IS_NATIVE
 #endif
 
@@ -36,14 +36,14 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
    '.s' must come last, so that a '.o' file will be made from
    a '.c' or '.p' or ... file rather than from a .s file.  */
 
-static char default_suffixes[]
-#ifdef VMS
+static const char default_suffixes[]
+#if MK_OS_VMS
   /* VMS should include all UNIX/POSIX + some VMS extensions */
   = ".out .exe .a .olb .hlb .tlb .mlb .ln .o .obj .c .cxx .cc .cpp .pas .p \
 .for .f .r .y .l .ym .yl .mar .s .ss .i .ii .mod .sym .def .h .info .dvi \
 .tex .texinfo .texi .txinfo .mem .hlp .brn .rnh .rno .rnt .rnx .w .ch .cweb \
 .web .com .sh .elc .el";
-#elif defined(__EMX__)
+#elif MK_OS_OS2
   = ".out .a .ln .o .c .cc .C .cpp .p .f .F .m .r .y .l .ym .yl .s .S \
 .mod .sym .def .h .info .dvi .tex .texinfo .texi .txinfo \
 .w .ch .web .sh .elc .el .obj .exe .dll .lib";
@@ -53,9 +53,9 @@ static char default_suffixes[]
 .w .ch .web .sh .elc .el";
 #endif
 
-static struct pspec default_pattern_rules[] =
+static const struct pspec default_pattern_rules[] =
   {
-#ifdef VMS
+#if MK_OS_VMS
     { "(%)", "%",
         "@if f$$search(\"$@\") .eqs. \"\" then $(LIBRARY)/CREATE/"
          "$(or "
@@ -76,7 +76,7 @@ static struct pspec default_pattern_rules[] =
     /* The X.out rules are only in BSD's default set because
        BSD Make has no null-suffix rules, so 'foo.out' and
        'foo' are the same thing.  */
-#ifdef VMS
+#if MK_OS_VMS
     { "%.exe", "%",
         "$(CP) $< $@" },
 
@@ -93,9 +93,9 @@ static struct pspec default_pattern_rules[] =
     { 0, 0, 0 }
   };
 
-static struct pspec default_terminal_rules[] =
+static const struct pspec default_terminal_rules[] =
   {
-#ifdef VMS
+#if MK_OS_VMS
 
     /* RCS.  */
     { "%", "%$$5lv", /* Multinet style */
@@ -124,13 +124,13 @@ static struct pspec default_terminal_rules[] =
         "$(GET) $(GFLAGS) $(SCCS_OUTPUT_OPTION) $<" },
     { "%", "SCCS/s.%",
         "$(GET) $(GFLAGS) $(SCCS_OUTPUT_OPTION) $<" },
-#endif /* !VMS */
+#endif /* !MK_OS_VMS */
     { 0, 0, 0 }
   };
 
-static const char *default_suffix_rules[] =
+static const char *const default_suffix_rules[] =
   {
-#ifdef VMS
+#if MK_OS_VMS
     ".o",
     "$(LINK.obj) $^ $(LOADLIBES) $(LDLIBS) -o $@",
     ".obj",
@@ -263,7 +263,7 @@ static const char *default_suffix_rules[] =
     ".l.ln",
     "@$(RM) $*.c\n $(LEX.l) $< > $*.c\n$(LINT.c) -i $*.c -o $@\n $(RM) $*.c",
 
-#else /* ! VMS */
+#else /* ! MK_OS_VMS */
 
     ".o",
     "$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) -o $@",
@@ -326,19 +326,19 @@ static const char *default_suffix_rules[] =
     ".c.ln",
     "$(LINT.c) -C$* $<",
     ".y.ln",
-#ifndef __MSDOS__
-    "$(YACC.y) $< \n $(LINT.c) -C$* y.tab.c \n $(RM) y.tab.c",
-#else
+#if MK_OS_DOS
     "$(YACC.y) $< \n $(LINT.c) -C$* y_tab.c \n $(RM) y_tab.c",
+#else
+    "$(YACC.y) $< \n $(LINT.c) -C$* y.tab.c \n $(RM) y.tab.c",
 #endif
     ".l.ln",
     "@$(RM) $*.c\n $(LEX.l) $< > $*.c\n$(LINT.c) -i $*.c -o $@\n $(RM) $*.c",
 
     ".y.c",
-#ifndef __MSDOS__
-    "$(YACC.y) $< \n mv -f y.tab.c $@",
-#else
+#if MK_OS_DOS
     "$(YACC.y) $< \n mv -f y_tab.c $@",
+#else
+    "$(YACC.y) $< \n mv -f y.tab.c $@",
 #endif
     ".l.c",
     "@$(RM) $@ \n $(LEX.l) $< > $@",
@@ -393,14 +393,14 @@ static const char *default_suffix_rules[] =
     ".web.tex",
     "$(WEAVE) $<",
 
-#endif /* !VMS */
+#endif /* !MK_OS_VMS */
 
     0, 0,
   };
 
-static const char *default_variables[] =
+static const char *const default_variables[] =
   {
-#ifdef VMS
+#if MK_OS_VMS
 #ifdef __ALPHA
     "ARCH", "ALPHA",
 #endif
@@ -515,7 +515,7 @@ static const char *default_variables[] =
     "CP", "copy",
     ".LIBPATTERNS", "%.olb lib%.a",
 
-#else /* !VMS */
+#else /* !MK_OS_VMS */
 
     "AR", "ar",
 #ifdef _AIX
@@ -536,7 +536,7 @@ static const char *default_variables[] =
     "CXX", MAKE_CXX,
 #else
 # ifdef GCC_IS_NATIVE
-#  ifdef __MSDOS__
+#  ifdef MK_OS_DOS
     "CXX", "gpp",       /* g++ is an invalid name on MSDOS */
 #  else
     "CXX", "gcc",
@@ -552,17 +552,17 @@ static const char *default_variables[] =
     "COFLAGS", "",
 
     "CPP", "$(CC) -E",
-#ifdef  CRAY
+#ifdef CRAY
     "CF77PPFLAGS", "-P",
     "CF77PP", "/lib/cpp",
     "CFT", "cft77",
     "CF", "cf77",
     "FC", "$(CF)",
-#else   /* Not CRAY.  */
-#ifdef  _IBMR2
+#else /* Not CRAY.  */
+#ifdef _IBMR2
     "FC", "xlf",
 #else
-#ifdef  __convex__
+#ifdef __convex__
     "FC", "fc",
 #else
     "FC", "f77",
@@ -582,10 +582,10 @@ static const char *default_variables[] =
 #endif
     "LINT", "lint",
     "M2C", "m2c",
-#ifdef  pyr
+#ifdef pyr
     "PC", "pascal",
 #else
-#ifdef  CRAY
+#ifdef CRAY
     "PC", "PASCAL",
     "SEGLDR", "segldr",
 #else
@@ -656,23 +656,23 @@ static const char *default_variables[] =
     "OUTPUT_OPTION", "-o $@",
 #endif
 
-#ifdef  SCCS_GET_MINUS_G
+#ifdef SCCS_GET_MINUS_G
     "SCCS_OUTPUT_OPTION", "-G$@",
 #endif
 
-#if defined(_AMIGA)
-    ".LIBPATTERNS", "%.lib",
-#elif defined(__MSDOS__)
+#if MK_OS_DOS
     ".LIBPATTERNS", "lib%.a $(DJDIR)/lib/lib%.a",
+#elif defined(_AMIGA)
+    ".LIBPATTERNS", "%.lib",
 #elif defined(__APPLE__)
     ".LIBPATTERNS", "lib%.dylib lib%.a",
-#elif defined(__CYGWIN__) || defined(WINDOWS32)
+#elif defined(__CYGWIN__) || MK_OS_W32
     ".LIBPATTERNS", "lib%.dll.a %.dll.a lib%.a %.lib lib%.dll %.dll",
 #else
     ".LIBPATTERNS", "lib%.so lib%.a",
 #endif
 
-#endif /* !VMS */
+#endif /* !MK_OS_VMS */
     /* Make this assignment to avoid undefined variable warnings.  */
     GNUMAKEFLAGS_NAME, "",
     0, 0
@@ -709,7 +709,7 @@ set_default_suffixes (void)
 void
 install_default_suffix_rules ()
 {
-  const char **s;
+  const char *const *s;
 
   if (no_builtin_rules_flag)
     return;
@@ -736,7 +736,7 @@ install_default_suffix_rules ()
 void
 install_default_implicit_rules (void)
 {
-  struct pspec *p;
+  const struct pspec *p;
 
   if (no_builtin_rules_flag)
     return;
@@ -751,7 +751,7 @@ install_default_implicit_rules (void)
 void
 define_default_variables (void)
 {
-  const char **s;
+  const char *const *s;
 
   if (no_builtin_variables_flag)
     return;
@@ -763,8 +763,8 @@ define_default_variables (void)
 void
 undefine_default_variables (void)
 {
-  const char **s;
+  const char *const *s;
 
   for (s = default_variables; *s != 0; s += 2)
-    undefine_variable_global (s[0], strlen (s[0]), o_default);
+    undefine_variable_global (NILF, s[0], strlen (s[0]), o_default);
 }

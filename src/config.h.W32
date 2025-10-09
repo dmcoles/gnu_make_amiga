@@ -1,6 +1,6 @@
 /* config.h.W32 -- hand-massaged config.h file for Windows builds       -*-C-*-
 
-Copyright (C) 1996-2023 Free Software Foundation, Inc.
+Copyright (C) 1996-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -17,10 +17,8 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "mkconfig.h"
 
-#define MK_W32 1
-
-/* Build for the WINDOWS32 API. */
-#define WINDOWS32 1
+/* Build for the Windows32 API. */
+#define MK_OS_W32 1
 
 /* Suppress some Visual C++ warnings.
    Maybe after the code cleanup for ISO C we can remove some/all of these.  */
@@ -389,9 +387,6 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #define HAVE_SYS_STAT_H 1
-
-/* Define to 1 if you have the <sys/timeb.h> header file. */
-#define HAVE_SYS_TIMEB_H 1
 
 /* Define to 1 if you have the <sys/time.h> header file. */
 #ifdef __MINGW32__

@@ -1,5 +1,5 @@
 /* Definitions of dependency data structures for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -41,7 +41,6 @@ struct nameseq
    'stem' is the stem for this dep line of static pattern rule or NULL.
    explicit is set when implicit rule search is performed and the prerequisite
    does not contain %. When explicit is set the file is not intermediate.  */
-
 
 #define DEP(_t)                                 \
     NAMESEQ (_t);                               \
@@ -89,7 +88,7 @@ struct goaldep
 #define PARSE_SIMPLE_SEQ(_s,_t) \
             (_t *)parse_file_seq ((_s),sizeof (_t),MAP_NUL,NULL,PARSEFS_NONE)
 
-#ifdef VMS
+#if MK_OS_VMS
 void *parse_file_seq ();
 #else
 void *parse_file_seq (char **stringp, size_t size,
@@ -132,6 +131,7 @@ SI void free_goal_chain (struct goaldep *g) { free_dep_chain((struct dep *)g); }
 # define free_goal_chain(_g) free_ns_chain ((struct nameseq *)(_g))
 #endif
 
+struct dep *copy_dep (const struct dep *d);
 struct dep *copy_dep_chain (const struct dep *d);
 
 struct goaldep *read_all_makefiles (const char **makefiles);

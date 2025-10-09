@@ -1,7 +1,6 @@
 /* External interfaces usable by dynamic objects loaded into GNU Make.
-   --THIS API IS A "TECHNOLOGY PREVIEW" ONLY.  IT IS NOT A STABLE INTERFACE--
 
-Copyright (C) 2013-2023 Free Software Foundation, Inc.
+Copyright (C) 2013-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -19,6 +18,8 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #ifndef _GNUMAKE_H_
 #define _GNUMAKE_H_
 
+#define GMK_ABI_VERSION 1
+
 /* Specify the location of elements read from makefiles.  */
 typedef struct
   {
@@ -27,6 +28,23 @@ typedef struct
   } gmk_floc;
 
 typedef char *(*gmk_func_ptr)(const char *nm, unsigned int argc, char **argv);
+
+/* When an object is loaded by GNU Make, a setup method will be invoked.
+   The name of the method is either derived from the filename of the object,
+   or specified explicitly in the makefile.  It has the signature:
+
+     int <setup_fn> (unsigned int abi_version, const gmk_floc *flocp);
+
+   The abi_version will be set to GMK_ABI_VERSION.
+
+   When an object is unloaded by GNU Make, an unload method will be invoked.
+   The name of the method is derived from the filename of the object, with
+   _gmk_unload appended.  It has the signature:
+
+     void <object>_gmk_unload (void);
+
+  There will only be one unload method invoked regardless of the number of
+  setup methods within the object.  */
 
 #ifdef _WIN32
 # ifdef GMK_BUILDING_MAKE
@@ -38,7 +56,7 @@ typedef char *(*gmk_func_ptr)(const char *nm, unsigned int argc, char **argv);
 # define GMK_EXPORT
 #endif
 
-/* Free memory returned by the gmk_expand() function.  */
+/* Free memory returned by the gmk_expand() and gmk_free() functions.  */
 GMK_EXPORT void gmk_free (char *str);
 
 /* Allocate memory in GNU Make's context.  */

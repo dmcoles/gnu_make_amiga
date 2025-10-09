@@ -42,9 +42,10 @@ null =
 v = $(let    ,$(info blankvar),abc)
 x = $(let $(null),$(info side-effect),abc)
 y = $(let y,,$ydef)
+z = $(let a b, ,+$a+$b+)
 
-all: ; @echo $v/$x/$y',
-              '', "blankvar\nside-effect\nabc/abc/def\n");
+all: ; @echo $v/$x/$y/$z',
+              '', "blankvar\nside-effect\nabc/abc/def/+++\n");
 
 # The example macro from the manual.
 run_make_test('
@@ -84,7 +85,7 @@ all: auto target
 auto: ; @echo $(let $(auto_var),,$(av)) $(av)
 $(let AR foo,bar foo ,$(eval $(value mktarget)))',
               '-e WHITE=WHITE CFLAGS=',
-              "automatic automatic automatic automatic automatic automatic automatic automatic automatic undefined default environment default file command line override automatic automatic
+              "automatic automatic automatic automatic automatic automatic automatic automatic automatic undefined default environment override default file command line override automatic automatic
 ar_foo _
 ");
 

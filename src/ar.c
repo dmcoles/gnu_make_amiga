@@ -1,5 +1,5 @@
 /* Interface to 'ar' archives for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 
 This file is part of GNU Make.
 
@@ -19,10 +19,11 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #ifndef NO_ARCHIVES
 
-#include "filedef.h"
-#include "dep.h"
 #include <fnmatch.h>
 #include <intprops.h>
+
+#include "dep.h"
+#include "filedef.h"
 
 /* Return nonzero if NAME is an archive-member reference, zero if not.  An
    archive-member reference is a name like 'lib(member)' where member is a
@@ -63,7 +64,7 @@ ar_parse_name (const char *name, char **arname_p, char **memname_p)
   p = strchr (*arname_p, '(');
   /* This is never called unless ar_name() is true so p cannot be NULL.  */
   if (!p)
-    OS (fatal, NILF, "Internal: ar_parse_name: bad name '%s'", *arname_p);
+    OS (fatal, NILF, "INTERNAL: ar_parse_name: bad name '%s'", *arname_p);
   *(p++) = '\0';
   p[strlen (p) - 1] = '\0';
   *memname_p = p;
@@ -120,7 +121,7 @@ ar_member_date (const char *name)
 
 /* Set the archive-member NAME's modtime to now.  */
 
-#ifdef VMS
+#if MK_OS_VMS
 int
 ar_touch (const char *name)
 {
@@ -148,7 +149,7 @@ ar_touch (const char *name)
   switch (ar_member_touch (arname, memname))
     {
     case -1:
-      OS (error, NILF, _("touch: Archive '%s' does not exist"), arname);
+      OS (error, NILF, _("touch: archive '%s' does not exist"), arname);
       break;
     case -2:
       OS (error, NILF, _("touch: '%s' is not a valid archive"), arname);
@@ -158,21 +159,21 @@ ar_touch (const char *name)
       break;
     case 1:
       OSS (error, NILF,
-           _("touch: Member '%s' does not exist in '%s'"), memname, arname);
+           _("touch: member '%s' does not exist in '%s'"), memname, arname);
       break;
     case 0:
       val = 0;
       break;
     default:
       OS (error, NILF,
-          _("touch: Bad return code from ar_member_touch on '%s'"), name);
+          _("touch: bad return code from ar_member_touch on '%s'"), name);
     }
 
   free (arname);
 
   return val;
 }
-#endif /* !VMS */
+#endif /* !MK_OS_VMS */
 
 /* State of an 'ar_glob' run, passed to 'ar_glob_match'.  */
 
@@ -187,7 +188,7 @@ struct ar_glob_state
   {
     const char *arname;
     const char *pattern;
-#ifdef VMS
+#if MK_OS_VMS
     char *suffix;
 #endif
     size_t size;
@@ -210,7 +211,7 @@ ar_glob_match (int desc UNUSED, const char *mem, int truncated UNUSED,
     {
       /* We have a match.  Add it to the chain.  */
       struct nameseq *new = xcalloc (state->size);
-#ifdef VMS
+#if MK_OS_VMS
       if (state->suffix)
         new->name = strcache_add(
             concat(5, state->arname, "(", mem, state->suffix, ")"));
@@ -268,7 +269,7 @@ ar_glob (const char *arname, const char *member_pattern, size_t size)
   struct nameseq *n;
   const char **names;
   unsigned int i;
-#ifdef VMS
+#if MK_OS_VMS
   char *vms_member_pattern;
 #endif
   if (! ar_glob_pattern_p (member_pattern, 1))
@@ -278,7 +279,7 @@ ar_glob (const char *arname, const char *member_pattern, size_t size)
      ar_glob_match will accumulate them in STATE.chain.  */
   state.arname = arname;
   state.pattern = member_pattern;
-#ifdef VMS
+#if MK_OS_VMS
     {
       /* In a copy of the pattern, find the suffix, save it and  remove it from
          the pattern */
@@ -299,7 +300,7 @@ ar_glob (const char *arname, const char *member_pattern, size_t size)
   state.n = 0;
   ar_scan (arname, ar_glob_match, &state);
 
-#ifdef VMS
+#if MK_OS_VMS
   /* Deallocate any duplicated string */
   free(vms_member_pattern);
   if (state.suffix)

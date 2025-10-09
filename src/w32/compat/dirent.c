@@ -1,5 +1,5 @@
 /* Directory entry code for Window platforms.
-Copyright (C) 1996-2023 Free Software Foundation, Inc.
+Copyright (C) 1996-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -96,7 +96,7 @@ closedir(DIR *pDir)
                 return;
         }
 
-        /* close the WINDOWS32 directory handle */
+        /* close the Windows32 directory handle */
         if (pDir->dir_hDirHandle != INVALID_HANDLE_VALUE)
                 FindClose(pDir->dir_hDirHandle);
 
@@ -159,7 +159,7 @@ rewinddir(DIR* pDir)
                 return;
         }
 
-        /* close the WINDOWS32 directory handle */
+        /* close the Windows32 directory handle */
         if (pDir->dir_hDirHandle != INVALID_HANDLE_VALUE)
                 if (!FindClose(pDir->dir_hDirHandle))
                         errno = EBADF;

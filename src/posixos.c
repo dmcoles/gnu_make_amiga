@@ -1,5 +1,5 @@
 /* POSIX-based operating system interface for GNU Make.
-Copyright (C) 2016-2023 Free Software Foundation, Inc.
+Copyright (C) 2016-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -122,10 +122,8 @@ make_job_rfd ()
 }
 
 static void
-set_blocking (int fd, int blocking)
+force_blocking (int fd, int blocking)
 {
-  /* If we're not using pselect() don't change the blocking.  */
-#ifdef HAVE_PSELECT
   int flags;
   EINTRLOOP (flags, fcntl (fd, F_GETFL));
   if (flags >= 0)
@@ -136,6 +134,14 @@ set_blocking (int fd, int blocking)
       if (r < 0)
         pfatal_with_name ("fcntl(O_NONBLOCK)");
     }
+}
+
+static void
+set_blocking (int fd, int blocking)
+{
+  /* If we're not using pselect() don't change the blocking.  */
+#ifdef HAVE_PSELECT
+  force_blocking (fd, blocking);
 #else
   (void) fd;
   (void) blocking;
@@ -145,20 +151,24 @@ set_blocking (int fd, int blocking)
 unsigned int
 jobserver_setup (int slots, const char *style)
 {
-  int r;
+  int r, k;
+
+  /* This function sets up the root jobserver.  */
+  job_root = 1;
 
 #if JOBSERVER_USE_FIFO
   if (!style || strcmp (style, "fifo") == 0)
     {
   /* Unfortunately glibc warns about uses of mktemp even though we aren't
      using it in dangerous way here.  So avoid this by generating our own
-     temporary file name.  */
-# define  FNAME_PREFIX "GMfifo"
+     temporary file name.  The template in misc.c uses 6 X's so be sure this
+     name cannot conflict with that.  */
+# define  FNAME_PREFIX "GmFIFO"
       const char *tmpdir = get_tmpdir ();
 
       fifo_name = xmalloc (strlen (tmpdir) + CSTRLEN (FNAME_PREFIX)
                            + INTSTR_LENGTH + 2);
-      sprintf (fifo_name, "%s/" FNAME_PREFIX "%" MK_PRI64_PREFIX "d",
+      sprintf (fifo_name, "%s/" FNAME_PREFIX "%03" MK_PRI64_PREFIX "d",
                tmpdir, (long long)make_pid ());
 
       EINTRLOOP (r, mkfifo (fifo_name, 0600));
@@ -207,17 +217,24 @@ jobserver_setup (int slots, const char *style)
   if (make_job_rfd () < 0)
     pfatal_with_name (_("duping jobs pipe"));
 
-  while (slots--)
+  /* Set the write side of the pipe to non blocking in case the number of
+     slots specified by the user exceeds pipe capacity.  */
+  force_blocking (job_fds[1], 0);
+  for (k = 0; k < slots; ++k)
     {
       EINTRLOOP (r, write (job_fds[1], &token, 1));
       if (r != 1)
-        pfatal_with_name (_("init jobserver pipe"));
+        {
+          if (errno != EAGAIN)
+            pfatal_with_name (_("init jobserver pipe"));
+
+          ONN (fatal, NILF, _("requested job count (%d) is larger than system limit (%d)"), slots+1, k);
+        }
     }
+  force_blocking (job_fds[1], 1);
 
   /* When using pselect() we want the read to be non-blocking.  */
   set_blocking (job_fds[0], 0);
-
-  job_root = 1;
 
   return 1;
 }
@@ -557,7 +574,7 @@ set_child_handler_action_flags (int set_handler, int set_alarm)
 {
   struct sigaction sa;
 
-#ifdef __EMX__
+#if MK_OS_OS2
   /* The child handler must be turned off here.  */
   signal (SIGCHLD, SIG_DFL);
 #endif
@@ -830,12 +847,12 @@ fd_noinherit (int fd)
 /* Set a file descriptor referring to a regular file to be in O_APPEND mode.
    If it fails, just ignore it.  */
 
-void
+int
 fd_set_append (int fd)
 {
+  int flags = -1;
 #if defined(F_GETFL) && defined(F_SETFL) && defined(O_APPEND)
   struct stat stbuf;
-  int flags;
   if (fstat (fd, &stbuf) == 0 && S_ISREG (stbuf.st_mode))
     {
       flags = fcntl (fd, F_GETFL, 0);
@@ -844,6 +861,22 @@ fd_set_append (int fd)
           int r;
           EINTRLOOP(r, fcntl (fd, F_SETFL, flags | O_APPEND));
         }
+    }
+#endif
+  return flags;
+}
+
+/* Reset a file descriptor referring to a regular file to be in O_APPEND mode.
+   If it fails, just ignore it.  */
+
+void
+fd_reset_append (int fd, int flags)
+{
+#if defined(F_GETFL) && defined(F_SETFL) && defined(O_APPEND)
+  if (flags >= 0)
+    {
+      int r;
+      EINTRLOOP(r, fcntl (fd, F_SETFL, flags));
     }
 #endif
 }

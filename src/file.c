@@ -1,5 +1,5 @@
 /* Target file management for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -18,14 +18,15 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <assert.h>
 
-#include "filedef.h"
-#include "dep.h"
-#include "job.h"
 #include "commands.h"
-#include "variable.h"
 #include "debug.h"
+#include "dep.h"
+#include "filedef.h"
 #include "hash.h"
+#include "job.h"
+#include "rule.h"
 #include "shuffle.h"
+#include "variable.h"
 
 
 /* Remember whether snap_deps has been invoked: we need this to be sure we
@@ -60,6 +61,14 @@ file_hash_cmp (const void *x, const void *y)
 
 static struct hash_table files;
 
+/* We can't free files we take out of the hash table, because they are still
+   likely pointed to in various places.  The check_renamed() will be used if
+   we come across these, to find the new correct file.  This is mainly to
+   prevent leak checkers from complaining.  */
+static struct file **rehashed_files = NULL;
+static size_t rehashed_files_len = 0;
+#define REHASHED_FILES_INCR 5
+
 /* Whether or not .SECONDARY with no prerequisites was given.  */
 static int all_secondary = 0;
 
@@ -73,7 +82,7 @@ lookup_file (const char *name)
 {
   struct file *f;
   struct file file_key;
-#ifdef VMS
+#if MK_OS_VMS
   int want_vmsify;
 #ifndef WANT_CASE_SENSITIVE_TARGETS
   char *lname;
@@ -85,7 +94,7 @@ lookup_file (const char *name)
   /* This is also done in parse_file_seq, so this is redundant
      for names read from makefiles.  It is here for names passed
      on the command line.  */
-#ifdef VMS
+#if MK_OS_VMS
    want_vmsify = (strpbrk (name, "]>:^") != NULL);
 # ifndef WANT_CASE_SENSITIVE_TARGETS
   if (*name != '.')
@@ -116,12 +125,12 @@ lookup_file (const char *name)
   if (*name == '\0')
     {
       /* It was all slashes after a dot.  */
-#if defined(_AMIGA)
-      name = "";
-#else
-      name = "./";
-#endif
-#if defined(VMS)
+			#if defined(_AMIGA)
+						name = "";
+			#else
+						 name = "./";
+			#endif
+#if MK_OS_VMS
       /* TODO - This section is probably not needed. */
       if (want_vmsify)
         name = "[]";
@@ -129,7 +138,7 @@ lookup_file (const char *name)
     }
   file_key.hname = name;
   f = hash_find_item (&files, &file_key);
-#if defined(VMS) && !defined(WANT_CASE_SENSITIVE_TARGETS)
+#if MK_OS_VMS && !defined(WANT_CASE_SENSITIVE_TARGETS)
   if (*name != '.')
     free (lname);
 #endif
@@ -153,7 +162,7 @@ enter_file (const char *name)
   assert (*name != '\0');
   assert (! verify_flag || strcache_iscached (name));
 
-#if defined(VMS) && !defined(WANT_CASE_SENSITIVE_TARGETS)
+#if MK_OS_VMS && !defined(WANT_CASE_SENSITIVE_TARGETS)
   if (*name != '.')
     {
       const char *n;
@@ -221,8 +230,7 @@ rehash_file (struct file *from_file, const char *to_hname)
 
   /* Find the end of the renamed list for the "from" file.  */
   file_key.hname = from_file->hname;
-  while (from_file->renamed != 0)
-    from_file = from_file->renamed;
+  check_renamed (from_file);
   if (file_hash_cmp (from_file, &file_key))
     /* hname changed unexpectedly!! */
     abort ();
@@ -266,19 +274,19 @@ rehash_file (struct file *from_file, const char *to_hname)
           if (to_file->cmds->fileinfo.filenm != 0)
             error (&from_file->cmds->fileinfo,
                    l + strlen (to_file->cmds->fileinfo.filenm) + INTSTR_LENGTH,
-                   _("Recipe was specified for file '%s' at %s:%lu,"),
+                   _("recipe was specified for file '%s' at %s:%lu,"),
                    from_file->name, from_file->cmds->fileinfo.filenm,
                    from_file->cmds->fileinfo.lineno);
           else
             error (&from_file->cmds->fileinfo, l,
-                   _("Recipe for file '%s' was found by implicit rule search,"),
+                   _("recipe for file '%s' was found by implicit rule search,"),
                    from_file->name);
           l += strlen (to_hname);
           error (&from_file->cmds->fileinfo, l,
-                 _("but '%s' is now considered the same file as '%s'."),
+                 _("but '%s' is now considered the same file as '%s'"),
                  from_file->name, to_hname);
           error (&from_file->cmds->fileinfo, l,
-                 _("Recipe for '%s' will be ignored in favor of the one for '%s'."),
+                 _("recipe for '%s' will be ignored in favor of the one for '%s'"),
                  from_file->name, to_hname);
         }
     }
@@ -331,10 +339,17 @@ rehash_file (struct file *from_file, const char *to_hname)
   MERGE (notintermediate);
   MERGE (ignore_vpath);
   MERGE (snapped);
+  MERGE (suffix);
 #undef MERGE
 
   to_file->builtin = 0;
   from_file->renamed = to_file;
+
+  if (rehashed_files_len % REHASHED_FILES_INCR == 0)
+    rehashed_files = xrealloc (rehashed_files,
+                               sizeof (struct file *) * (rehashed_files_len + REHASHED_FILES_INCR));
+
+  rehashed_files[rehashed_files_len++] = from_file;
 }
 
 /* Rename FILE to NAME.  This is not as simple as resetting
@@ -401,7 +416,7 @@ remove_intermediates (int sig)
               {
                 if (sig)
                   OS (error, NILF,
-                      _("*** Deleting intermediate file '%s'"), f->name);
+                      _("*** deleting intermediate file '%s'"), f->name);
                 else
                   {
                     if (! doneany)
@@ -421,7 +436,10 @@ remove_intermediates (int sig)
                   }
                 if (status < 0)
                   {
-                    perror_with_name ("\nunlink: ", f->name);
+                    if (doneany)
+                      fputs ("\n", stdout);
+                    fflush (stdout);
+                    perror_with_name ("unlink: ", f->name);
                     /* Start printing over.  */
                     doneany = 0;
                   }
@@ -640,7 +658,7 @@ expand_deps (struct file *f)
       set_file_variables (f, d->stem ? d->stem : f->stem);
 
       /* Perform second expansion.  */
-      p = variable_expand_for_file (d->name, f);
+      p = expand_string_for_file (d->name, f);
 
       /* Free the un-expanded name.  */
       free ((char*)d->name);
@@ -692,7 +710,7 @@ struct dep *
 expand_extra_prereqs (const struct variable *extra)
 {
   struct dep *d;
-  struct dep *prereqs = extra ? split_prereqs (variable_expand (extra->value)) : NULL;
+  struct dep *prereqs = extra ? split_prereqs (expand_string (extra->value)) : NULL;
 
   for (d = prereqs; d; d = d->next)
     {
@@ -709,10 +727,10 @@ expand_extra_prereqs (const struct variable *extra)
 /* Perform per-file snap operations. */
 
 static void
-snap_file (const void *item, void *arg)
+snap_file (struct file *f, const struct dep *deps)
 {
-  struct file *f = (struct file*)item;
   struct dep *prereqs = NULL;
+  struct dep *d;
 
   /* If we're not doing second expansion then reset updating.  */
   if (!second_expansion)
@@ -732,14 +750,22 @@ snap_file (const void *item, void *arg)
 
   /* If .EXTRA_PREREQS is set, add them as ignored by automatic variables.  */
   if (f->variables)
-    prereqs = expand_extra_prereqs (lookup_variable_in_set (STRING_SIZE_TUPLE(".EXTRA_PREREQS"), f->variables->set));
-
+    {
+      prereqs = expand_extra_prereqs (lookup_variable_in_set (
+                      STRING_SIZE_TUPLE(".EXTRA_PREREQS"), f->variables->set));
+      if (second_expansion)
+        for (d = prereqs; d; d = d->next)
+          {
+            if (!d->name)
+              d->name = xstrdup (d->file->name);
+            d->need_2nd_expansion = 1;
+          }
+    }
   else if (f->is_target)
-    prereqs = copy_dep_chain (arg);
+    prereqs = copy_dep_chain (deps);
 
   if (prereqs)
     {
-      struct dep *d;
       for (d = prereqs; d; d = d->next)
         if (streq (f->name, dep_name (d)))
           /* Skip circular dependencies.  */
@@ -891,9 +917,17 @@ snap_deps (void)
   {
     struct dep *prereqs = expand_extra_prereqs (lookup_variable (STRING_SIZE_TUPLE(".EXTRA_PREREQS")));
 
-    /* Perform per-file snap operations.  */
-    hash_map_arg(&files, snap_file, prereqs);
+    /* Perform per-file snap operations.
+       We can't use hash_map*() here because snap_file may add new elements
+       into the files hash, which is not allowed in the map.  Instead make a
+       dump of the files and walk through that.  */
+    void** filedump = hash_dump (&files, NULL, 0);
 
+		void** filep;
+    for (filep = filedump; *filep; ++filep)
+      snap_file (*filep, prereqs);
+
+    free (filedump);
     free_dep_chain (prereqs);
   }
 
@@ -940,7 +974,7 @@ file_timestamp_cons (const char *fname, time_t stamp, long int ns)
       ts = s <= OLD_MTIME ? ORDINARY_MTIME_MIN : ORDINARY_MTIME_MAX;
       file_timestamp_sprintf (buf, ts);
       OSS (error, NILF,
-           _("%s: Timestamp out of range; substituting %s"), f, buf);
+           _("%s: timestamp out of range: substituting %s"), f, buf);
     }
 
   return ts;
@@ -1007,22 +1041,20 @@ file_timestamp_sprintf (char *p, FILE_TIMESTAMP ts)
   if (tm)
     {
       intmax_t year = tm->tm_year;
-      sprintf (p, "%04" PRIdMAX "-%02d-%02d %02d:%02d:%02d",
-               year + 1900, tm->tm_mon + 1, tm->tm_mday,
-               tm->tm_hour, tm->tm_min, tm->tm_sec);
+      p += sprintf (p, "%04" PRIdMAX "-%02d-%02d %02d:%02d:%02d",
+                    year + 1900, tm->tm_mon + 1, tm->tm_mday,
+                    tm->tm_hour, tm->tm_min, tm->tm_sec);
     }
   else if (t < 0)
-    sprintf (p, "%" PRIdMAX, (intmax_t) t);
+    p += sprintf (p, "%" PRIdMAX, (intmax_t) t);
   else
-    sprintf (p, "%" PRIuMAX, (uintmax_t) t);
-  p += strlen (p);
+    p += sprintf (p, "%" PRIuMAX, (uintmax_t) t);
 
   /* Append nanoseconds as a fraction, but remove trailing zeros.  We don't
      know the actual timestamp resolution, since clock_getres applies only to
      local times, whereas this timestamp might come from a remote filesystem.
      So removing trailing zeros is the best guess that we can do.  */
-  sprintf (p, ".%09d", FILE_TIMESTAMP_NS (ts));
-  p += strlen (p) - 1;
+  p += sprintf (p, ".%09d", FILE_TIMESTAMP_NS (ts)) - 1;
   while (*p == '0')
     p--;
   p += *p != '.';
@@ -1032,7 +1064,7 @@ file_timestamp_sprintf (char *p, FILE_TIMESTAMP ts)
 
 /* Print the data base of files.  */
 
-void
+static void
 print_prereqs (const struct dep *deps)
 {
   const struct dep *ood = 0;
@@ -1108,6 +1140,9 @@ print_file (const void *item)
     puts (_("#  File is a prerequisite of .NOTINTERMEDIATE."));
   if (f->secondary)
     puts (_("#  File is secondary (prerequisite of .SECONDARY)."));
+  if (f->is_explicit)
+    puts (_("#  File is explicitly mentioned."));
+
   if (f->also_make != 0)
     {
       const struct dep *d;
@@ -1183,6 +1218,34 @@ print_file_data_base (void)
   fputs (_("\n# files hash-table stats:\n# "), stdout);
   hash_print_stats (&files, stdout);
 }
+
+static void
+print_target (const void *item)
+{
+  const struct file *f = item;
+
+  if (!f->is_target || f->suffix)
+    return;
+
+  /* Ignore any special targets, as defined by POSIX. */
+  if (f->name[0] == '.' && isupper ((unsigned char)f->name[1]))
+    {
+      const char *cp = f->name + 1;
+      while (*(++cp) != '\0')
+        if (!isupper ((unsigned char)*cp))
+          break;
+      if (*cp == '\0')
+        return;
+    }
+
+  puts (f->name);
+}
+
+void
+print_targets (void)
+{
+  hash_map (&files, print_target);
+}
 
 /* Verify the integrity of the data base of files.  */
 
@@ -1190,7 +1253,7 @@ print_file_data_base (void)
     do{                                                                       \
         if (_p->_n && _p->_n[0] && !strcache_iscached (_p->_n))               \
           error (NULL, strlen (_p->name) + CSTRLEN (# _n) + strlen (_p->_n),  \
-                 _("%s: Field '%s' not cached: %s"), _p->name, # _n, _p->_n); \
+                 _("%s: field '%s' not cached: %s"), _p->name, # _n, _p->_n); \
     }while(0)
 
 static void

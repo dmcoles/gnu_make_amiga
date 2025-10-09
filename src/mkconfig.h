@@ -1,6 +1,6 @@
 /* src/mkconfig.h.  Generated from mkconfig.h.in by configure.  */
 /* Autoconf values for use on non-POSIX systems.
-Copyright (C) 2022-2023 Free Software Foundation, Inc.
+Copyright (C) 2022-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the

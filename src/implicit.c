@@ -1,5 +1,5 @@
 /* Implicit rule searching for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -15,15 +15,17 @@ You should have received a copy of the GNU General Public License along with
 this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "makeint.h"
-#include "filedef.h"
-#include "rule.h"
-#include "dep.h"
-#include "debug.h"
-#include "variable.h"
-#include "job.h"      /* struct child, used inside commands.h */
-#include "commands.h" /* set_file_variables */
-#include "shuffle.h"
+
 #include <assert.h>
+
+#include "commands.h" /* set_file_variables */
+#include "debug.h"
+#include "dep.h"
+#include "filedef.h"
+#include "job.h"      /* struct child, used inside commands.h */
+#include "rule.h"
+#include "shuffle.h"
+#include "variable.h"
 
 static int pattern_search (struct file *file, int archive,
                            unsigned int depth, unsigned int recursions,
@@ -87,12 +89,10 @@ get_next_word (const char *buffer, size_t *length)
     return 0;
 
 
-  /* We already found the first value of "c", above.  */
   while (1)
     {
-      char closeparen;
-      int count;
-
+      /* Each time through the loop, "c" has the current char
+         and "p" points to the next char.  */
       switch (c)
         {
         case '\0':
@@ -101,31 +101,8 @@ get_next_word (const char *buffer, size_t *length)
           goto done_word;
 
         case '$':
-          c = *(p++);
-          if (c == '$')
-            break;
-
-          /* This is a variable reference, so read it to the matching
-             close paren.  */
-
-          if (c == '(')
-            closeparen = ')';
-          else if (c == '{')
-            closeparen = '}';
-          else
-            /* This is a single-letter variable reference.  */
-            break;
-
-          for (count = 0; *p != '\0'; ++p)
-            {
-              if (*p == c)
-                ++count;
-              else if (*p == closeparen && --count < 0)
-                {
-                  ++p;
-                  break;
-                }
-            }
+          /* This is a variable reference, so skip it.  */
+          p = skip_reference (p);
           break;
 
         case '|':
@@ -284,7 +261,7 @@ pattern_search (struct file *file, int archive,
          but not counting any slash at the end.  (foo/bar/ counts as
          bar/ in directory foo/, not empty in directory foo/bar/.)  */
       lastslash = memrchr (filename, '/', namelen - 1);
-#ifdef VMS
+#if MK_OS_VMS
       if (lastslash == NULL)
         lastslash = strrchr (filename, ']');
       if (lastslash == NULL)
@@ -357,7 +334,7 @@ pattern_search (struct file *file, int archive,
           check_lastslash = 0;
           if (lastslash)
             {
-#ifdef VMS
+#if MK_OS_VMS
               check_lastslash = strpbrk (target, "/]>:") == NULL;
 #else
               check_lastslash = strchr (target, '/') == 0;
@@ -706,7 +683,7 @@ pattern_search (struct file *file, int archive,
                     }
 
                   /* Perform the 2nd expansion.  */
-                  p = variable_expand_for_file (depname, file);
+                  p = expand_string_for_file (depname, file);
                   dptr = &dl;
 
                   /* Parse the results into a deps list.  */

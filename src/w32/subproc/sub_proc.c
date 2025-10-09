@@ -1,5 +1,5 @@
 /* Process handling for Windows.
-Copyright (C) 1996-2023 Free Software Foundation, Inc.
+Copyright (C) 1996-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -566,10 +566,10 @@ process_begin(
         char *shell_name = 0;
         int file_not_found=0;
         HANDLE exec_handle;
-        char exec_fname[MAX_PATH];
+        char exec_fname[MAX_PATH+1];
         const char *path_var = NULL;
         char **ep;
-        char buf[MAX_PATH];
+        char buf[MAX_PATH+1];
         DWORD bytes_returned;
         DWORD flags;
         char *command_line;
@@ -614,8 +614,9 @@ process_begin(
                         char *new_argv0;
                         char **argvi = argv;
                         size_t arglen = 0;
+                        char *exp = expand_variable ("SHELL", 5);
 
-                        strcpy(buf, variable_expand ("$(SHELL)"));
+                        memcpy (buf, exp, strlen(exp) + 1);
                         shell_name = &buf[0];
                         strcpy(exec_fname, "-c");
                         /* Construct a single command string in argv[0].  */
@@ -1475,12 +1476,12 @@ process_easy(
         CloseHandle(tmpIn);
     }
     if (hIn == INVALID_HANDLE_VALUE) {
-      fprintf(stderr, "process_easy: DuplicateHandle(In) failed (e=%ld)\n", e);
+      fprintf(stderr, "process_easy: DuplicateHandle(In) failed (e=%lu)\n", e);
       return INVALID_HANDLE_VALUE;
     }
   }
   if (outfd >= 0)
-    tmpOut = (HANDLE)_get_osfhandle (outfd);
+    tmpOut = get_handle_for_fd (outfd);
   else
     tmpOut = GetStdHandle (STD_OUTPUT_HANDLE);
   if (DuplicateHandle(GetCurrentProcess(),
@@ -1505,12 +1506,12 @@ process_easy(
         CloseHandle(tmpOut);
     }
     if (hOut == INVALID_HANDLE_VALUE) {
-      fprintf(stderr, "process_easy: DuplicateHandle(Out) failed (e=%ld)\n", e);
+      fprintf(stderr, "process_easy: DuplicateHandle(Out) failed (e=%lu)\n", e);
       return INVALID_HANDLE_VALUE;
     }
   }
   if (errfd >= 0)
-    tmpErr = (HANDLE)_get_osfhandle (errfd);
+    tmpErr = get_handle_for_fd (errfd);
   else
     tmpErr = GetStdHandle(STD_ERROR_HANDLE);
   if (DuplicateHandle(GetCurrentProcess(),
@@ -1535,7 +1536,7 @@ process_easy(
         CloseHandle(tmpErr);
     }
     if (hErr == INVALID_HANDLE_VALUE) {
-      fprintf(stderr, "process_easy: DuplicateHandle(Err) failed (e=%ld)\n", e);
+      fprintf(stderr, "process_easy: DuplicateHandle(Err) failed (e=%lu)\n", e);
       return INVALID_HANDLE_VALUE;
     }
   }

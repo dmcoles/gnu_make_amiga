@@ -1,5 +1,5 @@
 /* Miscellaneous generic support functions for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -15,20 +15,16 @@ You should have received a copy of the GNU General Public License along with
 this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "makeint.h"
-#include "filedef.h"
-#include "dep.h"
-#include "os.h"
-#include "debug.h"
 
 #include <assert.h>
 #include <stdarg.h>
 
-#ifdef WINDOWS32
+#if MK_OS_W32
 # include <windows.h>
 # include <io.h>
 #endif
 
-#ifdef __EMX__
+#if MK_OS_OS2
 # define INCL_DOS
 # include <os2.h>
 #endif
@@ -38,6 +34,11 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #else
 # include <sys/file.h>
 #endif
+
+#include "debug.h"
+#include "dep.h"
+#include "filedef.h"
+#include "os.h"
 
 unsigned int
 make_toui (const char *str, const char **error)
@@ -131,7 +132,7 @@ collapse_continuations (char *line)
   char *q;
 
   q = strchr(in, '\n');
-  if (q == 0)
+  if (!q)
     return;
 
   do
@@ -162,17 +163,33 @@ collapse_continuations (char *line)
 
       if (i & 1)
         {
-          /* Backslash/newline handling:
-             In traditional GNU Make all trailing whitespace, consecutive
-             backslash/newlines, and any leading non-newline whitespace on the
-             next line is reduced to a single space.
-             In POSIX, each backslash/newline and is replaced by a space.  */
+          unsigned int dollar;
+
+          /* Backslash/newline handling: out points to the final "\".
+             In POSIX, each backslash/newline is replaced by a space.
+             In GNU Make all trailing whitespace, consecutive backslash +
+             newlines, and any leading non-newline whitespace on the next line
+             is reduced to a single space.
+             As a special case, replace "$\" with the empty string.  */
           while (ISBLANK (*in))
             ++in;
-          if (! posix_pedantic)
+
+          {
+            const char *dp = out;
+            while (dp > line && dp[-1] == '$')
+              --dp;
+            dollar = (out - dp) % 2;
+          }
+
+          if (dollar)
+            --out;
+
+          if (!posix_pedantic)
             while (out > line && ISBLANK (out[-1]))
               --out;
-          *out++ = ' ';
+
+          if (!dollar)
+            *out++ = ' ';
         }
       else
         {
@@ -339,7 +356,7 @@ xstrndup (const char *str, size_t length)
 #else
   result = xmalloc (length + 1);
   if (length > 0)
-    strncpy (result, str, length);
+    memcpy (result, str, length);
   result[length] = '\0';
 #endif
 
@@ -406,6 +423,50 @@ next_token (const char *s)
   return (char *)s;
 }
 
+/* This function returns P if P points to EOS, or P+1 if P is NOT an open
+   paren or brace, or a pointer to the character after the matching close
+   paren or brace, skipping matched internal parens or braces.
+
+   It is typically called when we have seen a '$' in a string and we want to
+   treat it as a variable reference and find the end of it: in that case P
+   should point to the character after the '$'.  */
+
+char *
+skip_reference (const char *p)
+{
+  char openparen = *p;
+  char closeparen;
+  int count = 1;
+
+  if (openparen == '\0')
+    return (char*)p;
+
+  if (openparen == '(')
+    closeparen = ')';
+  else if (openparen == '{')
+    closeparen = '}';
+  else
+    return (char*)(p+1);
+
+  while (1)
+    {
+      ++p;
+      if (!STOP_SET (*p, MAP_NUL|MAP_VARSEP))
+        continue;
+      if (*p == '\0')
+        break;
+      if (*p == openparen)
+        ++count;
+      else if (*p == closeparen && --count == 0)
+        {
+          ++p;
+          break;
+        }
+    }
+
+  return (char*)p;
+}
+
 /* Find the next token in PTR; return the address of it, and store the length
    of the token into *LENGTHPTR if LENGTHPTR is not nil.  Set *PTR to the end
    of the token, so this function can be called repeatedly in a loop.  */
@@ -425,6 +486,7 @@ find_next_token (const char **ptr, size_t *lengthptr)
   return (char *)p;
 }
 
+
 /* Write a BUFFER of size LEN to file descriptor FD.
    Retry short writes from EINTR.  Return LEN, or -1 on error.  */
 ssize_t
@@ -438,7 +500,7 @@ writebuf (int fd, const void *buffer, size_t len)
 
       EINTRLOOP (r, write (fd, msg, l));
       if (r < 0)
-        return r;
+        return -1;
 
       l -= r;
       msg += r;
@@ -448,8 +510,7 @@ writebuf (int fd, const void *buffer, size_t len)
 }
 
 /* Read until we get LEN bytes from file descriptor FD, into BUFFER.
-   Retry short reads on EINTR.  If we get an error, return it.
-   Return 0 at EOF.  */
+   Retry short reads on EINTR. Return 0 at EOF and -1 on error.  */
 ssize_t
 readbuf (int fd, void *buffer, size_t len)
 {
@@ -460,7 +521,7 @@ readbuf (int fd, void *buffer, size_t len)
 
       EINTRLOOP (r, read (fd, msg, len));
       if (r < 0)
-        return r;
+        return -1;
       if (r == 0)
         break;
 
@@ -472,23 +533,38 @@ readbuf (int fd, void *buffer, size_t len)
 }
 
 
+/* Copy a 'struct dep'.  For 2nd expansion deps, dup the name.  */
+
+struct dep *
+copy_dep (const struct dep *d)
+{
+  struct dep *new = NULL;
+
+  if (d)
+    {
+      new = xmalloc (sizeof (struct dep));
+      memcpy (new, d, sizeof (struct dep));
+
+      if (new->need_2nd_expansion)
+        new->name = xstrdup (new->name);
+      new->next = 0;
+    }
+
+  return new;
+}
+
 /* Copy a chain of 'struct dep'.  For 2nd expansion deps, dup the name.  */
 
 struct dep *
 copy_dep_chain (const struct dep *d)
 {
-  struct dep *firstnew = 0;
-  struct dep *lastnew = 0;
+  struct dep *firstnew = NULL;
+  struct dep *lastnew = NULL;
 
   while (d != 0)
     {
-      struct dep *c = xmalloc (sizeof (struct dep));
-      memcpy (c, d, sizeof (struct dep));
+      struct dep *c = copy_dep (d);
 
-      if (c->need_2nd_expansion)
-        c->name = xstrdup (c->name);
-
-      c->next = 0;
       if (firstnew == 0)
         firstnew = lastnew = c;
       else
@@ -506,7 +582,7 @@ copy_dep_chain (const struct dep *d)
 void
 free_ns_chain (struct nameseq *ns)
 {
-  while (ns != 0)
+  while (ns != NULL)
     {
       struct nameseq *t = ns;
       ns = ns->next;
@@ -529,7 +605,7 @@ spin (const char* type)
     {
       fprintf (stderr, "SPIN on %s\n", filenm);
       do
-#ifdef WINDOWS32
+#if MK_OS_W32
         Sleep (1000);
 #else
         sleep (1);
@@ -576,7 +652,7 @@ umask (mode_t mask)
 }
 #endif
 
-#ifdef VMS
+#if MK_OS_VMS
 # define DEFAULT_TMPFILE    "sys$scratch:gnv$make_cmdXXXXXX.com"
 #else
 # define DEFAULT_TMPFILE    "GmXXXXXX"
@@ -589,7 +665,7 @@ get_tmpdir ()
 
   if (!tmpdir)
     {
-#if defined (__MSDOS__) || defined (WINDOWS32) || defined (__EMX__)
+#if MK_OS_DOS || MK_OS_W32 || MK_OS_OS2
 # define TMP_EXTRAS   "TMP", "TEMP",
 #else
 # define TMP_EXTRAS
@@ -599,7 +675,7 @@ get_tmpdir ()
       unsigned int found = 0;
 
       for (tp = tlist; *tp; ++tp)
-        if ((tmpdir = getenv (*tp)) && *tmpdir != '\0')
+        if ((tmpdir = getenv (*tp)) != NULL && *tmpdir != '\0')
           {
             struct stat st;
             int r;
@@ -634,7 +710,7 @@ get_tmptemplate ()
   template = xmalloc (strlen (tmpdir) + CSTRLEN (DEFAULT_TMPFILE) + 2);
   cp = stpcpy (template, tmpdir);
 
-#if !defined VMS
+#if !MK_OS_VMS
   /* It's not possible for tmpdir to be empty.  */
   if (! ISDIRSEP (cp[-1]))
     *(cp++) = '/';
@@ -790,7 +866,7 @@ get_tmpfile (char **name)
 }
 
 
-#if HAVE_TTYNAME && defined(__EMX__)
+#if HAVE_TTYNAME && MK_OS_OS2
 /* OS/2 kLIBC has a declaration for ttyname(), so configure finds it.
    But, it is not implemented!  Roll our own.  */
 char *ttyname (int fd)
@@ -876,25 +952,6 @@ strncasecmp (const char *s1, const char *s2, size_t n)
 }
 #endif
 
-
-#ifdef NEED_GET_PATH_MAX
-unsigned int
-get_path_max (void)
-{
-  static unsigned int value;
-
-  if (value == 0)
-    {
-      long x = pathconf ("/", _PC_PATH_MAX);
-      if (x > 0)
-        value = (unsigned int) x;
-      else
-        value = PATH_MAX;
-    }
-
-  return value;
-}
-#endif
 
 #if !HAVE_MEMPCPY
 void *

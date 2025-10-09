@@ -3,7 +3,7 @@ NOTE: getopt is now part of the C library, so if you don't know what
 "Keep this file name-space clean" means, talk to drepper@gnu.org
 before changing it!
 
-Copyright (C) 1987-2023 Free Software Foundation, Inc.
+Copyright (C) 1987-2025 Free Software Foundation, Inc.
 
 NOTE: The canonical source of this file is maintained with the GNU C Library.
 Bugs can be reported to bug-glibc@gnu.org.
@@ -68,7 +68,7 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 # include <unistd.h>
 #endif	/* GNU C library.  */
 
-#ifdef VMS
+#if MK_OS_VMS
 # include <unixlib.h>
 # if HAVE_STRING_H - 0
 #  include <string.h>

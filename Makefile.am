@@ -1,6 +1,6 @@
 # This is a -*-Makefile-*-, or close enough
 #
-# Copyright (C) 1997-2023 Free Software Foundation, Inc.
+# Copyright (C) 1997-2025 Free Software Foundation, Inc.
 # This file is part of GNU Make.
 #
 # GNU Make is free software; you can redistribute it and/or modify it under
@@ -37,7 +37,7 @@ make_SRCS =	src/ar.c src/arscan.c src/commands.c src/commands.h \
 		src/mkcustom.h src/os.h src/output.c src/output.h src/read.c \
 		src/remake.c src/rule.c src/rule.h src/shuffle.h src/shuffle.c \
 		src/signame.c src/strcache.c src/variable.c src/variable.h \
-		src/version.c src/vpath.c
+		src/version.c src/vpath.c src/warning.c src/warning.h
 
 w32_SRCS =	src/w32/pathstuff.c src/w32/w32os.c src/w32/compat/dirent.c \
 		src/w32/compat/posixfcn.c src/w32/include/dirent.h \
@@ -45,6 +45,8 @@ w32_SRCS =	src/w32/pathstuff.c src/w32/w32os.c src/w32/compat/dirent.c \
 		src/w32/include/sub_proc.h src/w32/include/w32err.h \
 		src/w32/subproc/misc.c src/w32/subproc/proc.h \
 		src/w32/subproc/sub_proc.c src/w32/subproc/w32err.c
+
+w32_utf8_SRCS = src/w32/utf8.rc src/w32/utf8.manifest
 
 vms_SRCS =	src/vms_exit.c src/vms_export_symbol.c src/vms_progname.c \
 		src/vmsdir.h src/vmsfunctions.c src/vmsify.c
@@ -90,6 +92,15 @@ else
   make_SOURCES += src/posixos.c
 endif
 
+UTF8OBJ = src/w32/utf8.$(OBJEXT)
+
+if HAVE_WINDRES
+  make_LDADD += $(UTF8OBJ)
+endif
+
+$(UTF8OBJ) : $(w32_utf8_SRCS)
+	$(WINDRES) -o $@ -i $<
+
 if USE_CUSTOMS
   make_SOURCES += src/remote-cstms.c
 else
@@ -113,13 +124,13 @@ test_FILES =	tests/run_make_tests tests/run_make_tests.bat \
 
 EXTRA_DIST =	ChangeLog INSTALL README build.sh build.cfg.in $(man_MANS) \
 		src/mkconfig.h README.customs README.OS2 README.zOS \
-		README.Amiga SCOPTIONS src/config.ami \
+    README.Amiga SCOPTIONS src/config.ami \
 		README.DOS builddos.bat src/configh.dos \
 		README.W32 build_w32.bat src/config.h.W32 \
 		README.VMS makefile.com src/config.h-vms src/vmsjobs.c \
 		vms_export_symbol_test.com \
 		src/gmk-default.scm src/gmk-default.h \
-		$(mk_FILES) $(m4_FILES) $(test_FILES)
+		$(mk_FILES) $(m4_FILES) $(test_FILES) $(w32_utf8_SRCS)
 
 # --------------- Generate the Guile default module content
 
@@ -155,8 +166,6 @@ check-local: check-regression
 # > check-regression
 #
 # Look for the make test suite, and run it if found and we can find perl.
-# If we're building outside the tree, we use symlinks to make a local copy of
-# the test suite.  Unfortunately the test suite itself isn't localizable yet.
 #
 MAKETESTFLAGS =
 
@@ -180,20 +189,13 @@ rand_char  = substr(c,int(rand()*36),1)
 rand_string = $(AWK) 'BEGIN{srand(); $(rand_value); print $(rand_char) "" $(rand_char) "" $(rand_char) "" $(rand_char);}'
 
 check-regression: tests/config-flags.pm
-	@rm -f $(testfiles)
-	@if test -f '$(top_srcdir)/tests/run_make_tests'; then \
+	$(AM_V_at) rm -f $(testfiles)
+	$(AM_V_at) if test -f '$(top_srcdir)/tests/run_make_tests.pl'; then \
 	  ulimit -n 128; \
 	  if $(PERL) -v >/dev/null 2>&1; then \
-	    case `cd '$(top_srcdir)'; pwd` in `pwd`) : ;; \
-	      *) test -d tests || mkdir tests; \
-		 rm -f srctests; \
-		 if ln -s '$(top_srcdir)/tests' srctests; then \
-		   for f in run_make_tests run_make_tests.pl test_driver.pl scripts thelp.pl; do \
-		     rm -f tests/$$f; ln -s ../srctests/$$f tests; \
-		   done; fi ;; \
-	    esac; \
-	    echo "cd tests && $(PERL) $(PERLFLAGS) ./run_make_tests.pl -srcdir $(abs_top_srcdir) -make $(GMK_OUTDIR)/make$(EXEEXT) $(MAKETESTFLAGS)"; \
-	    (cd tests && $(PERL) $(PERLFLAGS) ./run_make_tests.pl -srcdir '$(abs_top_srcdir)' -make '$(GMK_OUTDIR)/make$(EXEEXT)' $(MAKETESTFLAGS); echo $$? >.test-result) 2>&1 | tee $(testlog); \
+	    echo "cd tests && $(PERL) $(PERLFLAGS) $(abs_top_srcdir)/tests/run_make_tests.pl -make $(GMK_OUTDIR)/make$(EXEEXT) $(MAKETESTFLAGS)"; \
+	    (cd tests && $(PERL) $(PERLFLAGS) '$(abs_top_srcdir)/tests/run_make_tests.pl' -make '$(GMK_OUTDIR)/make$(EXEEXT)' $(MAKETESTFLAGS); echo $$? >.test-result) 2>&1 | tee $(testlog); \
+	    export TAR_OPTIONS='$(filter-out --sort%,$(TAR_OPTIONS))'; \
 	    er=$$(cat $(testresult)); if test "$$er" -ne 0; then \
 	      dirnm="$(errorpre)-$$($(rand_string))"; fnm="$$dirnm.tar.gz"; \
 	      rm -rf "$$dirnm"; mkdir "$$dirnm"; \

@@ -1,5 +1,5 @@
 /* Reading and parsing of makefiles for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -18,29 +18,27 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <assert.h>
 
-#include "filedef.h"
+#if MK_OS_W32
+# include <windows.h>
+# include "sub_proc.h"
+#elif MK_OS_VMS
+struct passwd *getpwnam (char *name);
+#else
+#ifndef _AMIGA
+# include <pwd.h>
+#endif
+#endif
+
+#include "commands.h"
+#include "debug.h"
 #include "dep.h"
+#include "filedef.h"
+#include "hash.h"
 #include "job.h"
 #include "os.h"
-#include "commands.h"
-#include "variable.h"
 #include "rule.h"
-#include "debug.h"
-#include "hash.h"
-
-
-#ifdef WINDOWS32
-#include <windows.h>
-#include "sub_proc.h"
-#else  /* !WINDOWS32 */
-#ifndef _AMIGA
-#ifndef VMS
-#include <pwd.h>
-#else
-struct passwd *getpwnam (char *name);
-#endif
-#endif
-#endif /* !WINDOWS32 */
+#include "variable.h"
+#include "warning.h"
 
 /* A 'struct ebuffer' controls the origin of the makefile we are currently
    eval'ing.
@@ -72,7 +70,7 @@ struct vmodifiers
 enum make_word_type
   {
      w_bogus, w_eol, w_static, w_variable, w_colon, w_dcolon, w_semicolon,
-     w_varassign, w_ampcolon, w_ampdcolon
+     w_ampcolon, w_ampdcolon
   };
 
 
@@ -100,9 +98,9 @@ static struct conditionals *conditionals = &toplevel_conditionals;
 
 /* Default directories to search for include files in  */
 
-static const char *default_include_directories[] =
+static const char *const default_include_directories[] =
   {
-#if defined(WINDOWS32) && !defined(INCLUDEDIR)
+#if MK_OS_W32 && !defined(INCLUDEDIR)
 /* This completely up to the user when they install MSVC or other packages.
    This is defined as a placeholder.  */
 # define INCLUDEDIR "."
@@ -110,12 +108,10 @@ static const char *default_include_directories[] =
 #if defined(INCLUDEDIR)
     INCLUDEDIR,
 #endif
-#ifndef _AMIGA
     "/usr/gnu/include",
     "/usr/local/include",
     "/usr/include",
-#endif
-    0
+    NULL
   };
 
 /* List of directories to search for include files in  */
@@ -143,7 +139,8 @@ static void do_undefine (char *name, enum variable_origin origin,
                          struct ebuffer *ebuf);
 static struct variable *do_define (char *name, enum variable_origin origin,
                                    struct ebuffer *ebuf);
-static int conditional_line (char *line, size_t len, const floc *flocp);
+static int conditional_line (char *line, size_t len, const floc *flocp,
+                             unsigned int initial_tab);
 static void check_specials (struct nameseq *filep, int set_default);
 static void check_special_file (struct file *filep, const floc *flocp);
 static void record_files (struct nameseq *filenames, int are_also_makes,
@@ -192,7 +189,7 @@ read_all_makefiles (const char **makefiles)
     char *name, *p;
     size_t length;
 
-    value = allocated_variable_expand ("$(MAKEFILES)");
+    value = allocated_expand_variable (STRING_SIZE_TUPLE ("MAKEFILES"));
 
     /* Set NAME to the start of next token and LENGTH to its length.
        MAKEFILES is updated for finding remaining tokens.  */
@@ -228,8 +225,8 @@ read_all_makefiles (const char **makefiles)
 
   if (num_makefiles == 0)
     {
-      static const char *default_makefiles[] =
-#ifdef VMS
+      static const char *const default_makefiles[] =
+#if MK_OS_VMS
         /* all lower case since readdir() (the vms version) 'lowercasifies' */
         /* TODO: Above is not always true, this needs more work */
         { "makefile.vms", "gnumakefile", "makefile", 0 };
@@ -237,14 +234,14 @@ read_all_makefiles (const char **makefiles)
 #ifdef _AMIGA
         { "GNUmakefile", "Makefile", "SMakefile", 0 };
 #else /* !Amiga && !VMS */
-#ifdef WINDOWS32
+#if MK_OS_W32
         { "GNUmakefile", "makefile", "Makefile", "makefile.mak", 0 };
-#else /* !Amiga && !VMS && !WINDOWS32 */
+#else /* !MK_OS_VMS && !MK_OS_W32 && !Amiga*/
         { "GNUmakefile", "makefile", "Makefile", 0 };
-#endif /* !Amiga && !VMS && !WINDOWS32 */
+#endif /* !Amiga && !MK_OS_VMS && !MK_OS_W32 */
 #endif /* AMIGA */
-#endif /* VMS */
-      const char **p = default_makefiles;
+#endif /* MK_OS_VMS */
+      const char *const *p = default_makefiles;
       while (*p != 0 && !file_exists_p (*p))
         ++p;
 
@@ -423,7 +420,7 @@ eval_makefile (const char *filename, unsigned short flags)
 
   /* Add this makefile to the list. */
   do_variable_definition (&ebuf.floc, "MAKEFILE_LIST", filename, o_file,
-                          f_append_value, 0);
+                          f_append_value, 0, s_global);
 
   /* Evaluate the makefile */
 
@@ -487,6 +484,8 @@ eval_buffer (char *buffer, const floc *flocp)
 
 /* Check LINE to see if it's a variable assignment or undefine.
 
+   If flocp is not NULL, then the assignment line begins with TAB.
+
    It might use one of the modifiers "export", "override", "private", or it
    might be one of the conditional tokens like "ifdef", "include", etc.
 
@@ -497,7 +496,7 @@ eval_buffer (char *buffer, const floc *flocp)
    based on the modifiers found if any, plus V_ASSIGN is 1.
  */
 static char *
-parse_var_assignment (const char *line, int targvar, struct vmodifiers *vmod)
+parse_var_assignment (const char *line, int targvar, const floc *flocp, struct vmodifiers *vmod)
 {
   const char *p;
   memset (vmod, '\0', sizeof (*vmod));
@@ -534,6 +533,8 @@ parse_var_assignment (const char *line, int targvar, struct vmodifiers *vmod)
         vmod->private_v = 1;
       else if (!targvar && word1eq ("define"))
         {
+          if (flocp)
+            O (error, flocp, _("warning: directive lines cannot start with TAB"));
           /* We can't have modifiers after 'define' */
           vmod->define_v = 1;
           p = next_token (p2);
@@ -541,6 +542,8 @@ parse_var_assignment (const char *line, int targvar, struct vmodifiers *vmod)
         }
       else if (!targvar && word1eq ("undefine"))
         {
+          if (flocp)
+            O (error, flocp, _("warning: directive lines cannot start with TAB"));
           /* We can't have modifiers after 'undefine' */
           vmod->undefine_v = 1;
           p = next_token (p2);
@@ -550,7 +553,14 @@ parse_var_assignment (const char *line, int targvar, struct vmodifiers *vmod)
         /* Not a variable or modifier: this is not a variable assignment.  */
         return (char *) line;
 
-      /* It was a modifier.  Try the next word.  */
+      /* It was a modifier.  Check for TAB and try the next word.  */
+      if (flocp)
+        {
+          O (error, flocp, _("warning: directive lines cannot start with TAB"));
+          /* Only warn about the first directive.  */
+          flocp = NULL;
+        }
+
       p = next_token (p2);
       if (*p == '\0')
         return (char *) line;
@@ -631,6 +641,8 @@ eval (struct ebuffer *ebuf, int set_default)
       size_t wlen;
       char *p;
       char *p2;
+      unsigned int is_rule;
+      unsigned int initial_tab;
       struct vmodifiers vmod;
 
       /* At the top of this loop, we are starting a brand new line.  */
@@ -661,9 +673,12 @@ eval (struct ebuffer *ebuf, int set_default)
                 }
             }
         }
+
       /* If this line is empty, skip it.  */
       if (line[0] == '\0')
         continue;
+
+      initial_tab = line[0] == '\t';
 
       linelen = strlen (line);
 
@@ -671,18 +686,15 @@ eval (struct ebuffer *ebuf, int set_default)
          If it is not one, we can stop treating cmd_prefix specially.  */
       if (line[0] == cmd_prefix)
         {
+          /* Ignore recipe lines in a rule with no targets.  */
           if (no_targets)
-            /* Ignore the commands in a rule with no targets.  */
             continue;
 
-          /* If there is no preceding rule line, don't treat this line
-             as a command, even though it begins with a recipe prefix.
-             SunOS 4 make appears to behave this way.  */
-
+          /* Only part of a recipe if it appears in a recipe context.  */
           if (filenames != 0)
             {
+              /* Are we in the un-taken leg of a conditional directive?  */
               if (ignoring)
-                /* Yep, this is a shell command, and we don't care.  */
                 continue;
 
               if (commands_idx == 0)
@@ -698,6 +710,8 @@ eval (struct ebuffer *ebuf, int set_default)
               memcpy (&commands[commands_idx], line + 1, linelen - 1);
               commands_idx += linelen - 1;
               commands[commands_idx++] = '\n';
+
+              /* This line is fully consumed.  */
               continue;
             }
         }
@@ -724,7 +738,7 @@ eval (struct ebuffer *ebuf, int set_default)
 
       /* See if this is a variable assignment.  We need to do this early, to
          allow variables with names like 'ifdef', 'export', 'private', etc.  */
-      p = parse_var_assignment (p, 0, &vmod);
+      p = parse_var_assignment (p, 0, initial_tab ? &ebuf->floc : NULL, &vmod);
       if (vmod.assign_v)
         {
           struct variable *v;
@@ -742,14 +756,14 @@ eval (struct ebuffer *ebuf, int set_default)
           record_waiting_files ();
 
           if (vmod.undefine_v)
-          {
-            do_undefine (p, origin, ebuf);
-            continue;
-          }
-          else if (vmod.define_v)
+            {
+              do_undefine (p, origin, ebuf);
+              continue;
+            }
+          if (vmod.define_v)
             v = do_define (p, origin, ebuf);
           else
-            v = try_variable_definition (fstart, p, origin, 0);
+            v = try_variable_definition (fstart, p, origin, s_global);
 
           assert (v != NULL);
 
@@ -770,6 +784,8 @@ eval (struct ebuffer *ebuf, int set_default)
       wlen = p2 - p;
       NEXT_TOKEN (p2);
 
+      is_rule = *p2 == ':' || ((*p2 == '&' || *p2 == '|') && p2[1] == ':');
+
       /* If we're in an ignored define, skip this line (but maybe get out).  */
       if (in_ignored_define)
         {
@@ -782,7 +798,7 @@ eval (struct ebuffer *ebuf, int set_default)
 
       /* Check for conditional state changes.  */
       {
-        int i = conditional_line (p, wlen, fstart);
+        int i = conditional_line (p, wlen, fstart, initial_tab);
         if (i != -2)
           {
             if (i == -1)
@@ -803,6 +819,11 @@ eval (struct ebuffer *ebuf, int set_default)
         {
           int exporting = *p == 'u' ? 0 : 1;
 
+          if (initial_tab)
+            OS (error, &ebuf->floc,
+                _("warning: %s lines cannot start with TAB"),
+                exporting ? "export" : "unexport");
+
           /* Export/unexport ends the previous rule.  */
           record_waiting_files ();
 
@@ -817,7 +838,7 @@ eval (struct ebuffer *ebuf, int set_default)
 
               /* Expand the line so we can use indirect and constructed
                  variable names in an (un)export command.  */
-              cp = ap = allocated_variable_expand (p2);
+              cp = ap = allocated_expand_string (p2);
 
               for (p = find_next_token (&cp, &l); p != 0;
                    p = find_next_token (&cp, &l))
@@ -840,10 +861,14 @@ eval (struct ebuffer *ebuf, int set_default)
           char *vpat;
           size_t l;
 
+          if (initial_tab)
+            O (error, &ebuf->floc,
+               _("warning: vpath directive lines cannot start with TAB"));
+
           /* vpath ends the previous rule.  */
           record_waiting_files ();
 
-          cp = variable_expand (p2);
+          cp = expand_string (p2);
           p = find_next_token (&cp, &l);
           if (p != 0)
             {
@@ -873,10 +898,15 @@ eval (struct ebuffer *ebuf, int set_default)
              exist.  "sinclude" is an alias for this from SGI.  */
           int noerror = (p[0] != 'i');
 
+          if (initial_tab)
+            OS (error, &ebuf->floc,
+                _("warning: %s lines cannot start with TAB"),
+                *p == 'i' ? "include" : *p == '-' ? "-include" : "sinclude");
+
           /* Include ends the previous rule.  */
           record_waiting_files ();
 
-          p = allocated_variable_expand (p2);
+          p = allocated_expand_string (p2);
 
           /* If no filenames, it's a no-op.  */
           if (*p == '\0')
@@ -920,17 +950,22 @@ eval (struct ebuffer *ebuf, int set_default)
           continue;
         }
 
-      /* Handle the load operations.  */
-      if (word1eq ("load") || word1eq ("-load"))
+      /* Handle the load operations.  Allow targets named "load".  */
+      if ((word1eq ("load") || word1eq ("-load")) && !is_rule)
         {
           /* A 'load' line specifies a dynamic object to load.  */
           struct nameseq *files;
           int noerror = (p[0] == '-');
 
+          if (initial_tab)
+            OS (error, &ebuf->floc,
+                _("warning: %s lines cannot start with TAB"),
+                noerror ? "-load" : "load");
+
           /* Load ends the previous rule.  */
           record_waiting_files ();
 
-          p = allocated_variable_expand (p2);
+          p = allocated_expand_string (p2);
 
           /* If no filenames, it's a no-op.  */
           if (*p == '\0')
@@ -1062,7 +1097,7 @@ eval (struct ebuffer *ebuf, int set_default)
             break;
           }
 
-        p2 = variable_expand_string (NULL, lb_next, wlen);
+        p2 = expand_string_buf (NULL, lb_next, wlen);
 
         while (1)
           {
@@ -1090,7 +1125,7 @@ eval (struct ebuffer *ebuf, int set_default)
                        entirely consistent, since we do an unconditional
                        expand below once we know we don't have a
                        target-specific variable. */
-                    variable_expand_string (pend, lb_next, SIZE_MAX);
+                    expand_string_buf (pend, lb_next, SIZE_MAX);
                     lb_next += strlen (lb_next);
                     p2 = variable_buffer + p2_off;
                     cmdleft = variable_buffer + cmd_off + 1;
@@ -1129,7 +1164,7 @@ eval (struct ebuffer *ebuf, int set_default)
 
             p2 += strlen (p2);
             *(p2++) = ' ';
-            p2 = variable_expand_string (p2, lb_next, wlen);
+            p2 = expand_string_buf (p2, lb_next, wlen);
             /* We don't need to worry about cmdleft here, because if it was
                found in the variable_buffer the entire buffer has already
                been expanded... we'll never get here.  */
@@ -1206,7 +1241,7 @@ eval (struct ebuffer *ebuf, int set_default)
             p2 = variable_buffer + l;
           }
 
-        p2 = parse_var_assignment (p2, 1, &vmod);
+        p2 = parse_var_assignment (p2, 1, NULL, &vmod);
         if (vmod.assign_v)
           {
             /* If there was a semicolon found, add it back, plus anything
@@ -1241,7 +1276,7 @@ eval (struct ebuffer *ebuf, int set_default)
         if (*lb_next != '\0')
           {
             size_t l = p2 - variable_buffer;
-            variable_expand_string (p2 + plen, lb_next, SIZE_MAX);
+            expand_string_buf (p2 + plen, lb_next, SIZE_MAX);
             p2 = variable_buffer + l;
 
             /* Look for a semicolon in the expanded line.  */
@@ -1266,6 +1301,7 @@ eval (struct ebuffer *ebuf, int set_default)
             else
               break;
           }
+
 #ifdef _AMIGA
         /* Here, the situation is quite complicated. Let's have a look
            at a couple of targets:
@@ -1282,6 +1318,7 @@ eval (struct ebuffer *ebuf, int set_default)
         if (p && !(ISSPACE (p[1]) || !p[1] || ISSPACE (p[-1])))
           p = 0;
 #endif
+
 #ifdef HAVE_DOS_PATHS
         {
           int check_again;
@@ -1388,7 +1425,7 @@ do_undefine (char *name, enum variable_origin origin, struct ebuffer *ebuf)
   char *p, *var;
 
   /* Expand the variable name and find the beginning (NAME) and end.  */
-  var = allocated_variable_expand (name);
+  var = allocated_expand_string (name);
   name = next_token (var);
   if (*name == '\0')
     O (fatal, &ebuf->floc, _("empty variable name"));
@@ -1397,7 +1434,7 @@ do_undefine (char *name, enum variable_origin origin, struct ebuffer *ebuf)
     --p;
   p[1] = '\0';
 
-  undefine_variable_global (name, p - name + 1, origin);
+  undefine_variable_global (&ebuf->floc, name, p - name + 1, origin);
   free (var);
 }
 
@@ -1421,8 +1458,11 @@ do_define (char *name, enum variable_origin origin, struct ebuffer *ebuf)
 
   p = parse_variable_definition (name, &var);
   if (p == NULL)
-    /* No assignment token, so assume recursive.  */
-    var.flavor = f_recursive;
+    {
+      /* No assignment token, so assume recursive.  */
+      var.flavor = f_recursive;
+      var.conditional = 0;
+    }
   else
     {
       if (var.value[0] != '\0')
@@ -1433,7 +1473,7 @@ do_define (char *name, enum variable_origin origin, struct ebuffer *ebuf)
     }
 
   /* Expand the variable name and find the beginning (NAME) and end.  */
-  n = allocated_variable_expand (name);
+  n = allocated_expand_string (name);
   name = next_token (n);
   if (name[0] == '\0')
     O (fatal, &defstart, _("empty variable name"));
@@ -1506,8 +1546,8 @@ do_define (char *name, enum variable_origin origin, struct ebuffer *ebuf)
   else
     definition[idx - 1] = '\0';
 
-  v = do_variable_definition (&defstart, name,
-                              definition, origin, var.flavor, 0);
+  v = do_variable_definition (&defstart, name, definition, origin, var.flavor,
+                              var.conditional, s_global);
   free (definition);
   free (n);
   return (v);
@@ -1526,7 +1566,7 @@ do_define (char *name, enum variable_origin origin, struct ebuffer *ebuf)
    1 if following text should be ignored.  */
 
 static int
-conditional_line (char *line, size_t len, const floc *flocp)
+conditional_line (char *line, size_t len, const floc *flocp, unsigned int initial_tab)
 {
   const char *cmdname;
   enum { c_ifdef, c_ifndef, c_ifeq, c_ifneq, c_else, c_endif } cmdtype;
@@ -1546,6 +1586,10 @@ conditional_line (char *line, size_t len, const floc *flocp)
   else chkword ("endif", c_endif)
   else
     return -2;
+
+  if (initial_tab)
+    O (error, flocp,
+       _("warning: conditional directive lines cannot start with TAB"));
 
   /* Found one: skip past it and any whitespace after it.  */
   line += len;
@@ -1606,13 +1650,13 @@ conditional_line (char *line, size_t len, const floc *flocp)
          and cannot be an 'else' or 'endif'.  */
 
       /* Find the length of the next word.  */
-      for (p = line+1; ! STOP_SET (*p, MAP_SPACE|MAP_NUL); ++p)
+      for (p = line+1; ! STOP_SET (*p, MAP_BLANK|MAP_NUL); ++p)
         ;
       len = p - line;
 
       /* If it's 'else' or 'endif' or an illegal conditional, fail.  */
       if (word1eq ("else") || word1eq ("endif")
-          || conditional_line (line, len, flocp) < 0)
+          || conditional_line (line, len, flocp, 0) < 0)
         EXTRATEXT ();
       else
         {
@@ -1666,7 +1710,7 @@ conditional_line (char *line, size_t len, const floc *flocp)
 
       /* Expand the thing we're looking up, so we can use indirect and
          constructed variable names.  */
-      var = allocated_variable_expand (line);
+      var = allocated_expand_string (line);
 
       /* Make sure there's only one variable name to test.  */
       p = end_of_token (var);
@@ -1695,19 +1739,10 @@ conditional_line (char *line, size_t len, const floc *flocp)
 
       s1 = ++line;
       /* Find the end of the first string.  */
-      if (termin == ',')
-        {
-          int count = 0;
-          for (; *line != '\0'; ++line)
-            if (*line == '(')
-              ++count;
-            else if (*line == ')')
-              --count;
-            else if (*line == ',' && count <= 0)
-              break;
-        }
-      else
-        while (*line != '\0' && *line != termin)
+      while (*line != '\0' && *line != termin)
+        if (*line == '$')
+          line = skip_reference (line+1);
+        else
           ++line;
 
       if (*line == '\0')
@@ -1715,7 +1750,7 @@ conditional_line (char *line, size_t len, const floc *flocp)
 
       if (termin == ',')
         {
-          /* Strip blanks after the first string.  */
+          /* Strip blanks before the comma.  */
           char *p = line++;
           while (ISBLANK (p[-1]))
             --p;
@@ -1724,9 +1759,9 @@ conditional_line (char *line, size_t len, const floc *flocp)
       else
         *line++ = '\0';
 
-      s2 = variable_expand (s1);
+      s2 = expand_string (s1);
       /* We must allocate a new copy of the expanded string because
-         variable_expand re-uses the same buffer.  */
+         expand_string re-uses the same buffer.  */
       l = strlen (s2);
       s1 = alloca (l + 1);
       memcpy (s1, s2, l + 1);
@@ -1773,7 +1808,7 @@ conditional_line (char *line, size_t len, const floc *flocp)
       if (*line != '\0')
         EXTRATEXT ();
 
-      s2 = variable_expand (s2);
+      s2 = expand_string (s2);
       conditionals->ignoring[o] = (streq (s1, s2) == (cmdtype == c_ifneq));
     }
 
@@ -1833,7 +1868,7 @@ record_target_var (struct nameseq *filenames, char *defn,
 
           v->origin = origin;
           if (v->flavor == f_simple)
-            v->value = allocated_variable_expand (v->value);
+            v->value = allocated_expand_string (v->value);
           else
             v->value = xstrdup (v->value);
         }
@@ -1854,9 +1889,9 @@ record_target_var (struct nameseq *filenames, char *defn,
           initialize_file_variables (f, 1);
 
           current_variable_set_list = f->variables;
-          v = try_variable_definition (flocp, defn, origin, 1);
+          v = try_variable_definition (flocp, defn, origin, s_target);
           if (!v)
-            O (fatal, flocp, _("Malformed target-specific variable definition"));
+            O (fatal, flocp, _("malformed target-specific variable definition"));
           current_variable_set_list = global;
         }
 
@@ -1924,7 +1959,7 @@ check_specials (struct nameseq *files, int set_default)
           continue;
         }
 
-#if !defined (__MSDOS__) && !defined (__EMX__)
+#if !MK_OS_DOS && !MK_OS_OS2
       if (!one_shell && streq (nm, ".ONESHELL"))
         {
           one_shell = 1;
@@ -2142,7 +2177,6 @@ record_files (struct nameseq *filenames, int are_also_makes,
       return;
     }
 
-
   /* Walk through each target and create it in the database.
      We already set up the first target, above.  */
   while (1)
@@ -2209,11 +2243,6 @@ record_files (struct nameseq *filenames, int are_also_makes,
               free_dep_chain (f->deps);
               f->deps = 0;
             }
-          /* This file is explicitly mentioned as a target.  There is no need
-             to set is_explicit in the case of double colon below, because an
-             implicit double colon rule only applies when the prerequisite
-             exists. A prerequisite which exists is not intermediate anyway. */
-          f->is_explicit = 1;
         }
       else
         {
@@ -2238,6 +2267,8 @@ record_files (struct nameseq *filenames, int are_also_makes,
 
           f->cmds = cmds;
         }
+      /* This file is explicitly mentioned as a target.  */
+      f->is_explicit = 1;
 
       if (are_also_makes)
         {
@@ -2315,15 +2346,14 @@ record_files (struct nameseq *filenames, int are_also_makes,
     }
 
   /* If there are also-makes, then populate a copy of the also-make list into
-     each one. For the last file, we take our original also_make list instead
-     wastefully copying it one more time and freeing it.  */
+     each one.  Omit the file from its also-make list.  */
   {
     struct dep *i;
 
     for (i = also_make; i != NULL; i = i->next)
       {
         struct file *f = i->file;
-        struct dep *cpy = i->next ? copy_dep_chain (also_make) : also_make;
+        struct dep *dp;
 
         if (f->also_make)
           {
@@ -2331,11 +2361,20 @@ record_files (struct nameseq *filenames, int are_also_makes,
                 _("warning: overriding group membership for target '%s'"),
                 f->name);
             free_dep_chain (f->also_make);
+            f->also_make = NULL;
           }
 
-        f->also_make = cpy;
+        for (dp = also_make; dp != NULL; dp = dp->next)
+          if (dp->file != f)
+            {
+              struct dep *cpy = copy_dep (dp);
+              cpy->next = f->also_make;
+              f->also_make = cpy;
+            }
       }
-    }
+
+    free_dep_chain (also_make);
+  }
 }
 
 /* Search STRING for an unquoted STOPMAP.
@@ -2367,35 +2406,7 @@ find_map_unquote (char *string, int stopmap)
       /* If we stopped due to a variable reference, skip over its contents.  */
       if (*p == '$')
         {
-          char openparen = p[1];
-
-          /* Check if '$' is the last character in the string.  */
-          if (openparen == '\0')
-            break;
-
-          p += 2;
-
-          /* Skip the contents of a non-quoted, multi-char variable ref.  */
-          if (openparen == '(' || openparen == '{')
-            {
-              unsigned int pcount = 1;
-              char closeparen = (openparen == '(' ? ')' : '}');
-
-              while (*p)
-                {
-                  if (*p == openparen)
-                    ++pcount;
-                  else if (*p == closeparen)
-                    if (--pcount == 0)
-                      {
-                        ++p;
-                        break;
-                      }
-                  ++p;
-                }
-            }
-
-          /* Skipped the variable reference: look for STOPCHARS again.  */
+          p = skip_reference (p+1);
           continue;
         }
 
@@ -2702,7 +2713,7 @@ readline (struct ebuffer *ebuf)
       /* We got a newline, so add one to the count of lines.  */
       ++nlines;
 
-#if !defined(WINDOWS32) && !defined(__MSDOS__) && !defined(__EMX__)
+#if !MK_OS_W32 && !MK_OS_DOS && !MK_OS_OS2
       /* Check to see if the line was really ended with CRLF; if so ignore
          the CR.  */
       if ((p - start) > 1 && p[-2] == '\r')
@@ -2756,7 +2767,8 @@ readline (struct ebuffer *ebuf)
 }
 
 /* Parse the next "makefile word" from the input buffer, and return info
-   about it.
+   about it.  This function won't be called in any context where we might need
+   to parse a variable assignment so we don't need to check that.
 
    A "makefile word" is one of:
 
@@ -2769,11 +2781,10 @@ readline (struct ebuffer *ebuf)
      w_ampcolon     An ampersand-colon (&:) token
      w_ampdcolon    An ampersand-double-colon (&::) token
      w_semicolon    A semicolon
-     w_varassign    A variable assignment operator (=, :=, ::=, +=, ?=, or !=)
 
    Note that this function is only used when reading certain parts of the
    makefile.  Don't use it where special rules hold sway (RHS of a variable,
-   in a command list, etc.)  */
+   in a recipe, etc.)  */
 
 static enum make_word_type
 get_next_mword (char *buffer, char **startp, size_t *length)
@@ -2800,29 +2811,13 @@ get_next_mword (char *buffer, char **startp, size_t *length)
       wtype = w_semicolon;
       goto done;
 
-    case '=':
-      wtype = w_varassign;
-      goto done;
-
     case ':':
-      if (*p == '=')
+      wtype = w_colon;
+      if (*p == ':')
         {
           ++p;
-          wtype = w_varassign; /* := */
+          wtype = w_dcolon;
         }
-      else if (*p == ':')
-        {
-          ++p;
-          if (p[1] == '=')
-            {
-              ++p;
-              wtype = w_varassign; /* ::= */
-            }
-          else
-            wtype = w_dcolon;
-        }
-      else
-        wtype = w_colon;
       goto done;
 
     case '&':
@@ -2840,43 +2835,26 @@ get_next_mword (char *buffer, char **startp, size_t *length)
         }
       break;
 
-    case '+':
-    case '?':
-    case '!':
-      if (*p == '=')
-        {
-          ++p;
-          wtype = w_varassign; /* += or ?= or != */
-          goto done;
-        }
-      break;
-
     default:
       break;
     }
 
-  /* This is some non-operator word.  A word consists of the longest
-     string of characters that doesn't contain whitespace, one of [:=#],
-     or [?+!]=, or &:.  */
+  /* This is some non-operator word.  A word consists of the longest string of
+     characters that doesn't contain whitespace, one of [:#], or &:.  */
 
   /* We start out assuming a static word; if we see a variable we'll
      adjust our assumptions then.  */
   wtype = w_static;
 
-  /* We already found the first value of "c", above.  */
   while (1)
     {
-      char closeparen;
-      int count;
-
+      /* Each time through the loop, "c" has the current character
+         and "p" points to the next character.  */
       if (END_OF_TOKEN (c))
         goto done_word;
 
       switch (c)
         {
-        case '=':
-          goto done_word;
-
         case ':':
 #ifdef HAVE_DOS_PATHS
           /* A word CAN include a colon in its drive spec.  The drive
@@ -2895,34 +2873,9 @@ get_next_mword (char *buffer, char **startp, size_t *length)
           if (c == '\0')
             goto done_word;
 
-          /* This is a variable reference, so note that it's expandable.
-             Then read it to the matching close paren.  */
+          /* This is a variable reference: note that then skip it.  */
           wtype = w_variable;
-
-          if (c == '(')
-            closeparen = ')';
-          else if (c == '{')
-            closeparen = '}';
-          else
-            /* This is a single-letter variable reference.  */
-            break;
-
-          for (count=0; *p != '\0'; ++p)
-            {
-              if (*p == c)
-                ++count;
-              else if (*p == closeparen && --count < 0)
-                {
-                  ++p;
-                  break;
-                }
-            }
-          break;
-
-        case '?':
-        case '+':
-          if (*p == '=')
-            goto done_word;
+          p = skip_reference (p-1);
           break;
 
         case '\\':
@@ -2956,6 +2909,7 @@ get_next_mword (char *buffer, char **startp, size_t *length)
     *startp = beg;
   if (length)
     *length = p - beg;
+
   return wtype;
 }
 
@@ -2976,12 +2930,12 @@ construct_include_path (const char **arg_dirs)
   int disable = 0;
 
   /* Compute the number of pointers we need in the table.  */
-  idx = sizeof (default_include_directories) / sizeof (const char *);
+  idx = ARRAYLEN (default_include_directories);
   if (arg_dirs)
     for (cpp = arg_dirs; *cpp != 0; ++cpp)
       ++idx;
 
-#ifdef  __MSDOS__
+#if MK_OS_DOS
   /* Add one for $DJDIR.  */
   ++idx;
 #endif
@@ -3035,7 +2989,8 @@ construct_include_path (const char **arg_dirs)
   /* Now add the standard default dirs at the end.  */
   if (!disable)
     {
-#ifdef  __MSDOS__
+      const char *const *ccpp;
+#if MK_OS_DOS
       /* The environment variable $DJDIR holds the root of the DJGPP directory
          tree; add ${DJDIR}/include.  */
       struct variable *djdir = lookup_variable ("DJDIR", 5);
@@ -3052,20 +3007,20 @@ construct_include_path (const char **arg_dirs)
             max_incl_len = len;
         }
 #endif
-      for (cpp = default_include_directories; *cpp != 0; ++cpp)
+      for (ccpp = default_include_directories; *ccpp != 0; ++ccpp)
         {
           int e;
 
-          EINTRLOOP (e, stat (*cpp, &stbuf));
+          EINTRLOOP (e, stat (*ccpp, &stbuf));
           if (e == 0 && S_ISDIR (stbuf.st_mode))
             {
-              size_t len = strlen (*cpp);
+              size_t len = strlen (*ccpp);
               /* If dir name is written with trailing slashes, discard them.  */
-              while (len > 1 && (*cpp)[len - 1] == '/')
+              while (len > 1 && (*ccpp)[len - 1] == '/')
                 --len;
               if (len > max_incl_len)
                 max_incl_len = len;
-              dirs[idx++] = strcache_add_len (*cpp, len);
+              dirs[idx++] = strcache_add_len (*ccpp, len);
             }
         }
     }
@@ -3074,10 +3029,11 @@ construct_include_path (const char **arg_dirs)
 
   /* Now add each dir to the .INCLUDE_DIRS variable.  */
 
-  do_variable_definition (NILF, ".INCLUDE_DIRS", "", o_default, f_simple, 0);
+  do_variable_definition (NILF, ".INCLUDE_DIRS", "", o_default, f_simple, 0,
+                          s_global);
   for (cpp = dirs; *cpp != 0; ++cpp)
-    do_variable_definition (NILF, ".INCLUDE_DIRS", *cpp,
-                            o_default, f_append, 0);
+    do_variable_definition (NILF, ".INCLUDE_DIRS", *cpp, o_default, f_append,
+                            0, s_global);
 
   free ((void *) include_directories);
   include_directories = dirs;
@@ -3089,20 +3045,20 @@ construct_include_path (const char **arg_dirs)
 char *
 tilde_expand (const char *name)
 {
-#if !defined(VMS)
+#if !MK_OS_VMS
   if (name[1] == '/' || name[1] == '\0')
     {
       char *home_dir;
       int is_variable;
 
       {
-        /* Turn off --warn-undefined-variables while we expand HOME.  */
-        int save = warn_undefined_variables_flag;
-        warn_undefined_variables_flag = 0;
+        /* Turn off undefined variables warning while we expand HOME.  */
+        enum warning_action save = warn_get (wt_undefined_var);
+        warn_set (wt_undefined_var, w_ignore);
 
-        home_dir = allocated_variable_expand ("$(HOME)");
+        home_dir = allocated_expand_variable (STRING_SIZE_TUPLE ("HOME"));
 
-        warn_undefined_variables_flag = save;
+        warn_set (wt_undefined_var, save);
       }
 
       is_variable = home_dir[0] != '\0';
@@ -3111,7 +3067,7 @@ tilde_expand (const char *name)
           free (home_dir);
           home_dir = getenv ("HOME");
         }
-# if !defined(_AMIGA) && !defined(WINDOWS32)
+# if !defined(_AMIGA) && !MK_OS_W32
       if (home_dir == 0 || home_dir[0] == '\0')
         {
           char *logname = getlogin ();
@@ -3123,7 +3079,7 @@ tilde_expand (const char *name)
                 home_dir = p->pw_dir;
             }
         }
-# endif /* !AMIGA && !WINDOWS32 */
+# endif /* !AMIGA && !MK_OS_W32 */
       if (home_dir != 0)
         {
           char *new = xstrdup (concat (2, home_dir, name + 1));
@@ -3132,7 +3088,7 @@ tilde_expand (const char *name)
           return new;
         }
     }
-# if !defined(_AMIGA) && !defined(WINDOWS32)
+# if !defined(_AMIGA) && !MK_OS_W32
   else
     {
       struct passwd *pwent;
@@ -3151,8 +3107,8 @@ tilde_expand (const char *name)
       else if (userend != 0)
         *userend = '/';
     }
-# endif /* !AMIGA && !WINDOWS32 */
-#endif /* !VMS */
+# endif /* !AMIGA && !MK_OS_W32 */
+#endif /* !MK_OS_VMS */
   return 0;
 }
 
@@ -3263,14 +3219,14 @@ parse_file_seq (char **stringp, size_t size, int stopmap,
       s = p;
       p = find_map_unquote (p, findmap);
 
-#ifdef VMS
+#if MK_OS_VMS
         /* convert comma separated list to space separated */
       if (p && *p == ',')
         *p =' ';
 #endif
 #ifdef _AMIGA
       /* If we stopped due to a device name, skip it.  */
-      if (p && p != s+1 && p[0] == ':' && !(ISSPACE (p[1]) || !p[1] || ISSPACE (p[-1])))
+			if (p && p != s+1 && p[0] == ':' && !(ISSPACE (p[1]) || !p[1] || ISSPACE (p[-1])))      
         p = find_map_unquote (p+1, findmap);
 #endif
 #ifdef HAVE_DOS_PATHS
@@ -3295,34 +3251,36 @@ parse_file_seq (char **stringp, size_t size, int stopmap,
 
       /* Strip leading "this directory" references.  */
       if (NONE_SET (flags, PARSEFS_NOSTRIP))
-#ifdef VMS
-        /* Skip leading '[]'s. should only be one set or bug somewhere else */
-        if (p - s > 2 && s[0] == '[' && s[1] == ']')
+        {
+#if MK_OS_VMS
+          /* Skip leading '[]'s. should only be one set or bug somewhere else */
+          if (p - s > 2 && s[0] == '[' && s[1] == ']')
             s += 2;
-        /* Skip leading '<>'s. should only be one set or bug somewhere else */
-        if (p - s > 2 && s[0] == '<' && s[1] == '>')
+          /* Skip leading '<>'s. should only be one set or bug somewhere else */
+          if (p - s > 2 && s[0] == '<' && s[1] == '>')
             s += 2;
 #endif
-        /* Skip leading './'s.  */
-        while (p - s > 2 && s[0] == '.' && s[1] == '/')
-          {
-            /* Skip "./" and all following slashes.  */
-            s += 2;
-            while (*s == '/')
-              ++s;
-          }
+          /* Skip leading './'s.  */
+          while (p - s > 2 && s[0] == '.' && s[1] == '/')
+            {
+              /* Skip "./" and all following slashes.  */
+              s += 2;
+              while (*s == '/')
+                ++s;
+            }
+        }
 
       /* Extract the filename just found, and skip it.
          Set NAME to the string, and NLEN to its length.  */
 
       if (s == p)
         {
-        /* The name was stripped to empty ("./"). */
 #if defined(_AMIGA)
           /* PDS-- This cannot be right!! */
           tp[0] = '\0';
           nlen = 0;
 #else
+        /* The name was stripped to empty ("./"). */
           tp[0] = '.';
           tp[1] = '/';
           tp[2] = '\0';
@@ -3331,7 +3289,7 @@ parse_file_seq (char **stringp, size_t size, int stopmap,
         }
       else
         {
-#ifdef VMS
+#if MK_OS_VMS
 /* VMS filenames can have a ':' in them but they have to be '\'ed but we need
  *  to remove this '\' before we can use the filename.
  * xstrdup called because S may be read-only string constant.

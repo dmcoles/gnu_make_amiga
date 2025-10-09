@@ -1,6 +1,6 @@
 # Process this file with autoconf to produce a configure script.
 #
-# Copyright (C) 1993-2023 Free Software Foundation, Inc.
+# Copyright (C) 1993-2025 Free Software Foundation, Inc.
 # This file is part of GNU Make.
 #
 # GNU Make is free software; you can redistribute it and/or modify it under
@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License along with
 # this program.  If not, see <https://www.gnu.org/licenses/>.
 
-AC_INIT([GNU Make],[4.4.1],[bug-make@gnu.org])
+AC_INIT([GNU Make],[4.4.90],[bug-make@gnu.org])
 
 AC_PREREQ([2.69])
 
@@ -67,8 +67,8 @@ AC_HEADER_DIRENT
 AC_HEADER_STAT
 
 AC_CHECK_HEADERS([stdlib.h string.h strings.h locale.h unistd.h limits.h \
-                  memory.h sys/param.h sys/resource.h sys/timeb.h sys/time.h \
-                  sys/select.h sys/file.h fcntl.h spawn.h])
+                  memory.h sys/param.h sys/resource.h sys/time.h sys/select.h \
+                  sys/file.h fcntl.h spawn.h])
 
 AM_PROG_CC_C_O
 AC_C_CONST
@@ -444,13 +444,18 @@ AC_SUBST([MAKE_HOST])
 
 w32_target_env=no
 AM_CONDITIONAL([WINDOWSENV], [false])
+AM_CONDITIONAL([HAVE_WINDRES], [false])
 
 AS_CASE([$host],
   [*-*-mingw32],
    [AM_CONDITIONAL([WINDOWSENV], [true])
     w32_target_env=yes
-    AC_DEFINE([WINDOWS32], [1], [Build for the WINDOWS32 API.])
+    AC_DEFINE([MK_OS_W32], [1], [Build for the Windows32 API.])
     AC_DEFINE([HAVE_DOS_PATHS], [1], [Support DOS-style pathnames.])
+    # Windows host tools.
+    # If windres is available, make will use UTF-8.
+    AC_CHECK_TOOL([WINDRES], [windres], [:])
+    AM_CONDITIONAL([HAVE_WINDRES], [test "$WINDRES" != ':'])
   ])
 
 AC_DEFINE_UNQUOTED([PATH_SEPARATOR_CHAR],['$PATH_SEPARATOR'],

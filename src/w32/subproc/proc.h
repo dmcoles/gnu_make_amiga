@@ -1,5 +1,5 @@
 /* Definitions for Windows
-Copyright (C) 1996-2023 Free Software Foundation, Inc.
+Copyright (C) 1996-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -14,7 +14,7 @@ A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
-#ifndef  _PROC_H
+#ifndef _PROC_H
 #define _PROC_H
 
 typedef int bool_t;

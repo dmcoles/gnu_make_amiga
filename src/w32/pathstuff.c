@@ -1,5 +1,5 @@
 /* Path conversion for Windows pathnames.
-Copyright (C) 1996-2023 Free Software Foundation, Inc.
+Copyright (C) 1996-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -196,7 +196,7 @@ convert_path_to_nutc(char *path)
                     p = ++etok;
                     continue;
                 } else if ((etok = strpbrk(etok+1, ":;")) == NULL)
-                    break;    /* thing found was a WINDOWS32 pathname */
+                    break;    /* thing found was a Windows32 pathname */
 
             /* save separator */
             sep = *etok;

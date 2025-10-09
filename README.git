@@ -1,0 +1,409 @@
+                                                                     -*-text-*-
+
+-------------------------------------------------------------------------------
+Copyright (C) 2002-2025 Free Software Foundation, Inc.
+This file is part of GNU Make.
+
+GNU Make is free software; you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation; either version 3 of the License, or (at your option) any later
+version.
+
+GNU Make is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program.  If not, see <https://www.gnu.org/licenses/>.
+-------------------------------------------------------------------------------
+
+Obtaining Git Code
+------------------
+
+This seems redundant, since if you're reading this you most likely have
+already performed this step; however, for completeness, you can obtain the GNU
+make source code via Git from the FSF's Savannah project
+<https://savannah.gnu.org/projects/make/>:
+
+  $ git clone git://git.savannah.gnu.org/make.git
+
+
+Changes using Git
+-----------------
+
+If you do not have push privileges to the GNU Make Git repository, see the
+README file section "Submitting Patches" for information.
+
+If you have push privileges to the GNU Make Git repository keep this
+information in mind:
+
+Starting with GNU Make 4.0 we no longer keep a separate ChangeLog file in
+source control.  We use the Gnulib git-to-changelog conversion script to
+convert the Git comments into ChangeLog-style entries for release.  As a
+result, please format your Git comments carefully so they will look clean
+after conversion.  In particular, each line of your comment will have a TAB
+added before it so be sure your comment lines are not longer than 72
+characters; prefer 70 or less.  Please use standard ChangeLog formats for
+your commit messages (sans the leading TAB of course).
+
+Rule #1: Don't rewrite pushed history on master (no "git push --force").
+Rule #2: Feel free to rewrite pushed history on personal branches.
+Rule #3: Squash-merge or rebase + merge --ff-only, rather than merging from
+         personal branches into master.
+
+Typical simple workflow might be:
+
+  * Edit files / make / make check
+  * Use "git status" and "git diff" to verify your changes
+  * Use "git add" to stage the changes you want to make
+  * Use "git commit" to commit the staged changes to your local repository
+  * Use "git pull -r" to accept new changes from the upstream repository
+  * Use "git push" to push your commits back to the upstream repository
+
+For Emacs users, there are many options for Git integration but I strongly
+recommend Magit: https://magit.vc/  It makes the workflow much clearer, and
+has advanced features such as constructing multiple commits from various files
+and even from different diff chunks in the same file.  There is a video
+available which helps a lot.
+
+
+Coding Standards
+----------------
+
+GNU Make code adheres to the GNU Coding Standards.  Please use only spaces and
+no TAB characters in source code.
+
+Additionally, GNU Make is a foundational bootstrap package for the GNU
+project; as such it is conservative about language features it expects.
+However, GNU Make does rely on the Gnulib portability library, and Gnulib
+currently requires a ISO C99 compiler.  So features in ISO C99 can be
+assumed.
+
+
+Building From Git for POSIX
+---------------------------
+
+To build GNU Make from Git on POSIX systems such as GNU/Linux, you will
+need to install the following extra software:
+
+* autoconf >= 2.69
+* automake >= 1.16.1
+* autopoint
+* texinfo (for makeinfo)
+* gettext
+* pkg-config
+* GCC
+* GNU Make (POSIX make is not sufficient)
+
+And any tools that those utilities require (GNU m4, etc.)
+
+To run the tests you must install Perl.
+
+To create dist files you will additionally need:
+
+* lzip (to create tar.lz dist files)
+* texlive (or some other TeX package)
+
+GNU Make requires Gnulib to provide some facilities.  If you want to maintain
+a local installation of gnulib you can set GNULIB_SRCDIR to point to it.
+Otherwise, ./bootstrap will obtain a clone for you.
+
+Due to issues with gnulib's getloadavg, you must have automake 1.16.1 or
+above.  This version may not yet be available through GNU/Linux package
+managers.  If you need to install from source be sure to set ACLOCAL_PATH to
+point to the pkg-config location (e.g., /usr/share/aclocal).
+
+If you want to build from Git with a non-GCC compiler, add "MAKE_CFLAGS=" to
+your make command line (or at least remove any flags your compiler does not
+support).
+
+When building from Git you must build in the source directory: "VPATH
+builds" from remote directories are not supported.  Once you've created
+a distribution, of course, you can unpack it and do a VPATH build from
+there.
+
+After checking out the code, you will need to run the bootstrap script:
+
+ $ ./bootstrap
+
+Alternatively you can just pull content from remote locations with:
+
+ $ ./bootstrap --pull
+
+And/or just re-generate auto-generatable files with:
+
+ $ ./bootstrap --gen
+
+(Running ./bootstrap does both in one step.)
+
+At this point you have successfully brought your Git copy of the GNU
+make source directory up to the point where it can be treated
+more-or-less like the official package you would get from ftp.gnu.org.
+That is, you can just run:
+
+  $ ./configure
+  $ make check
+
+to build and test GNU Make.
+
+NOTE! This method builds GNU Make in "maintainer mode".  Make programs built
+      in this mode will be slower, possibly MUCH slower: there are various
+      sanity checks enabled.  Further this mode assumes a modern GCC, GNU
+      libc, and well-formed system headers and enables a high level of
+      warnings AND enables -Werror to turn warnings into failures.
+
+      If you want to build from Git with "maintainer mode" disabled, add
+      "MAKE_MAINTAINER_MODE=" to the make command line.  If you want to turn
+      off the extra warning flags, add "MAKE_CFLAGS=" to the make command
+      line.  If you want to keep the warnings but not fail, add
+      "EXTRA_CFLAGS=-Wno-error" to the make command line.
+
+      For example:
+        $ ./configure
+        $ make check MAKE_MAINTAINER_MODE= MAKE_CFLAGS=
+        $ make install
+
+
+Building From Git for Windows
+-----------------------------
+
+If you have a UNIX emulation like CYGWIN you can opt to run the general build
+procedure above; it will work.  Consult README.W32 for information on options
+you might want to use when running ./configure.
+
+If you can't or don't want to do that, then first run the .\bootstrap.bat
+script to "prime" your Git workspace:
+
+  > .\bootstrap.bat
+
+Next, follow the instructions in the README.W32 file.
+
+Note, neither of these methods are tested regularly by the GNU Make
+maintainers.  Building for Windows from a distribution tarball IS tested
+regularly.
+
+NOTE! "Maintainer mode" (see above) IS ENABLED when building from Git using
+      the build_w32.bat file.
+
+
+Debugging and Testing
+---------------------
+
+These instructions have been tested on GNU systems.  I have no idea if they
+work on non-GNU systems (Windows, MacOS, etc.)
+
+* Alternate Configurations:
+  The maintMakefile has a rule for running configure with various different
+  options, with and without packages.  Run:
+
+    make check-alt-config
+
+* Valgrind:
+  You can run all tests under valgrind by passing the -memcheck option:
+
+    (cd tests && ./run_make_tests -make ../make -memcheck)
+
+  Note, this is slow!  Also some tests will fail because of invoking valgrind.
+
+* ASAN:
+  You can build with ASAN and run tests, like this:
+
+    make clean
+    make -j8 CFLAGS='-ggdb3 -fsanitize=address' LDFLAGS='-ggdb3 -fsanitize=address'
+
+  Then to check for corruption only but not memory leaks run:
+
+    ASAN_OPTIONS='detect_stack_after_use_return=true:detect_leaks=false' make check
+
+  To check for leaks too run:
+
+    make check
+
+  Note that ASAN is reporting many more errors than valgrind.  I don't know
+  which one is wrong: I haven't looked at them closely.
+
+
+Creating a Package
+------------------
+
+Once you have performed the above steps (including the configuration and
+build) you can create a GNU Make package.  This is very simple, just
+run:
+
+  $ make dist-gzip
+
+and, if you like:
+
+  $ make dist-lzip
+
+Even better, you should run this:
+
+  $ make distcheck
+
+Which will build both .gz and .lz package files, then unpack one into a
+temporary location, try to build it and repack it, then verifying that
+everything works, you get the same results, _and_ no extraneous files are
+left over after the "distclean" rule.
+
+This package can be unpacked and built to give a "normal" (non-maintainer
+mode) result.
+
+
+Steps to Release
+----------------
+
+Here are the things that need to be done (in more or less this order)
+before making an official release.  If something breaks such that you need to
+change code, be sure to start over again sufficiently that everything is
+consistent (that's why we don't finalize the Git tag, etc. until the end).
+
+  * Update the configure.ac file with the new release number.
+  * Update the EDITION value in the doc/make.texi file.
+  * Update the doc/make.1 file with the release date.
+  * Update the NEWS file with the release number and date.
+  * Ensure the Savannah bug list URL in the NEWS file uses the correct
+    "Fixed Release" ID number.
+  * Run "make distcheck" to be sure it all works.
+  * Run "make check-alt-config" to be sure alternative configurations work
+  * run "make tag-release" to create a Git tag for the release
+  * Push everything:
+    git push --tags origin master
+
+The safest thing is to create an entirely new repository and build the final
+package from there:
+
+  git clone git://git.savannah.gnu.org/make.git make-release
+  cd make-release
+
+If you don't want to create a new repository then run "git clean -fdx".
+Then:
+
+  ./bootstrap
+  ./configure
+  make distcheck
+
+Perform test builds on whichever systems you have access to.
+
+Use a previous announcement as a template to create an announcement in a text
+file then sign it with GPG:
+
+  gpg --clearsign <announcement.txt>
+
+Or, use your mail client's PGP/GPG signing capabilities.
+
+NOTE! In order to publish a package on the FSF FTP site you need to have my
+      GPG private key, and my passphrase to unlock it.
+
+      Depending on your distribution (whether GnuPG is integrated with your
+      keyring etc.) the upload operation will either pop up a window asking
+      for the GPG key passphrase one time, or else it will use the CLI to ask
+      for the GPG passphrase _THREE_ times.  Sigh.
+
+
+Publishing a Release Candidate
+------------------------------
+
+Usually I publish one or two release candidates for people to test before
+making an official release.  Release candidates use a GNU numbering scheme,
+which add a ".9x" release number to the PREVIOUS major release.  So the first
+release candidate for GNU Make 4.4 would be GNU Make 4.3.90, the second
+release candidate would be 4.3.91, etc.
+
+Upload a release candidate using:
+
+  make upload-alpha
+
+Announce a release candidate to these mailing lists:
+
+    To:  bug-make@gnu.org
+    BCC: help-make@gnu.org, make-w32@gnu.org, make-alpha@gnu.org
+
+You will have to approve the BCC's on the mailing list admin sites.  Send
+separate copies to (don't use CC as replies will go to these lists):
+
+  * coordinator@translationproject.org
+  * platform-testers@gnu.org
+
+
+Publishing a Release
+--------------------
+
+When publishing a final release there are extra steps that need to be taken:
+
+  * Run "make update-makeweb" to get a copy of the GNU Make web pages
+  * Run "make update-gnuweb" to get a copy of the GNU website boilerplate pages
+  * Update the web page boilerplate if necessary:
+      ( cd ~/src/make/make-web \
+         && ~/src/gnu-www/www/server/standards/patch-from-parent \
+                make.html \
+                ~/src/gnu-www/www/server/standards/boilerplate.html )
+  * Run "make gendocs" (requires gnulib) to generate the manual files for
+    the GNU Make web pages.
+  * Follow the directions from gendocs for the web page repository
+
+Manage the Savannah project for GNU Make:
+
+  * In Savannah edit the "Component Version" field and choose the "SCM" entry.
+    Modify the "Value", "Rank", and "Description" values for the to refer to
+    the new release.  The "Rank" field should be 10 less than the previous
+    release so it orders properly.
+
+  * In Savannah edit the "Fixed Release" field and choose the "SCM" entry.
+    Modify the "Value", "Rank", and "Description" values for the to refer to
+    the new release.  The "Rank" field should be 10 less than the previous
+    release so it orders properly.
+
+  * In Savannah create a new entry for the "Component Version" field:
+      - Value: SCM
+      - Rank:  20
+      - Descr: Issues found in code retrieved from Source Code Management (Git), rather than a distributed version. Please include the SHA you are working with.
+
+  * In Savannah create a new entry for the "Fix Release" field:
+      - Value: SCM
+      - Rank:  20
+      - Descr: Fixed in Source Code Management (Git). The fix will be included in the next release of GNU Make.
+
+Upload a release using:
+
+  make upload-ftp
+
+Announce a release to these mailing lists:
+
+    To:  info-gnu@gnu.org, bug-make@gnu.org
+    BCC: help-make@gnu.org, make-w32@gnu.org, make-alpha@gnu.org
+
+You will have to approve the BCC's on the mailing list admin sites.  Send
+separate copies to (don't use CC as replies will go to these lists):
+
+  * coordinator@translationproject.org
+  * platform-testers@gnu.org
+
+Announce on Savannah:
+
+  * Add a news item to the Savannah project site.
+
+Start the next release:
+
+  * Update configure.ac and add a ".90" to the release number.
+  * Update the NEWS file with a new section for the release / date.
+  * Update the Savannah URL for the bugs fixed in the NEWS section.
+
+
+Appendix A - For The Brave
+--------------------------
+
+For those of you who trust me implicitly, or are just brave (or
+foolhardy), here is a canned sequence of commands to build a GNU Make
+distribution package from a virgin Git source checkout (assuming all the
+prerequisites are available of course).
+
+This list is eminently suitable for a quick swipe o' the mouse and a
+swift click o' mouse-2 into an xterm.  Go for it!
+
+For a debugging version:
+
+./bootstrap && ./configure CFLAGS=-g && make check
+
+For an optimized version
+
+./bootstrap && ./configure && make check

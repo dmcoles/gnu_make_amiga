@@ -1,5 +1,5 @@
 /* Miscellaneous global declarations and portability cruft for GNU Make.
-Copyright (C) 2023 Free Software Foundation, Inc.
+Copyright (C) 2023-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -36,7 +36,7 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 # ifdef _AIX
  #pragma alloca
 # else
-#  if !defined(__GNUC__) && !defined(WINDOWS32) && !defined(_AMIGA)
+#  if !defined(__GNUC__) && !MK_OS_W32 && !defined(_AMIGA)
 #   ifndef alloca /* predefined by HP cc +Olibcalls */
 char *alloca ();
 #   endif

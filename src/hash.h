@@ -20,7 +20,7 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <stdio.h>
 #include <ctype.h>
 
-#if defined __cplusplus || (defined __STDC__ && __STDC__) || defined WINDOWS32
+#if defined __cplusplus || (defined __STDC__ && __STDC__) || MK_OS_W32
 # if !defined __GLIBC__ || !defined __P
 #  undef	__P
 #  define __P(protos)	protos
@@ -51,13 +51,14 @@ struct hash_table
   unsigned long ht_collisions;	/* # of failed calls to comparison function */
   unsigned long ht_lookups;	/* # of queries */
   unsigned int ht_rehashes;	/* # of times we've expanded table */
+  unsigned int ht_in_map:1;     /* 1 if we're inside a hash_map*() function */
 };
 
 typedef int (*qsort_cmp_t) __P((void const *, void const *));
 
 void hash_init __P((struct hash_table *ht, unsigned long size,
                     hash_func_t hash_1, hash_func_t hash_2, hash_cmp_func_t hash_cmp));
-void hash_load __P((struct hash_table *ht, void *item_table,
+void hash_load __P((struct hash_table *ht, const void *item_table,
                     unsigned long cardinality, unsigned long size));
 void **hash_find_slot __P((struct hash_table *ht, void const *key));
 void *hash_find_item __P((struct hash_table *ht, void const *key));
@@ -76,7 +77,7 @@ void **hash_dump __P((struct hash_table *ht, void **vector_0, qsort_cmp_t compar
 extern unsigned jhash(unsigned char const *key, int n);
 extern unsigned jhash_string(unsigned char const *key);
 
-extern void *hash_deleted_item;
+extern const void *hash_deleted_item;
 #define HASH_VACANT(item) ((item) == 0 || (void *) (item) == hash_deleted_item)
 
 

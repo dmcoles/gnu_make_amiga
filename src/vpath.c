@@ -1,5 +1,5 @@
 /* Implementation of pattern-matching file search paths for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -15,11 +15,12 @@ You should have received a copy of the GNU General Public License along with
 this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "makeint.h"
+
 #include "filedef.h"
-#include "variable.h"
-#ifdef WINDOWS32
+#if MK_OS_W32
 #include "pathstuff.h"
 #endif
+#include "variable.h"
 
 
 /* Structure used to represent a selective VPATH searchpath.  */
@@ -71,7 +72,8 @@ build_vpath_lists (void)
   /* If there is a VPATH variable with a nonnull expanded value, construct the
      general VPATH list from it.  */
 
-  p = variable_expand ("$(strip $(VPATH))");
+  p = expand_variable ("VPATH", 5);
+  NEXT_TOKEN (p);
 
   if (*p != '\0')
     {
@@ -95,7 +97,8 @@ build_vpath_lists (void)
   /* If there is a GPATH variable with a nonnull expanded value, construct the
      GPATH list from it.  */
 
-  p = variable_expand ("$(strip $(GPATH))");
+  p = expand_variable ("GPATH", 5);
+  NEXT_TOKEN (p);
 
   if (*p != '\0')
     {
@@ -185,7 +188,7 @@ construct_vpath_list (char *pattern, char *dirpath)
       return;
     }
 
-#ifdef WINDOWS32
+#if MK_OS_W32
     convert_vpath_to_windows32 (dirpath, ';');
 #endif
 
@@ -231,7 +234,7 @@ construct_vpath_list (char *pattern, char *dirpath)
       len = p - v;
       /* Make sure there's no trailing slash,
          but still allow "/" as a directory.  */
-#if defined(__MSDOS__) || defined(__EMX__) || defined(HAVE_DOS_PATHS)
+#if MK_OS_DOS || MK_OS_OS2 || defined(HAVE_DOS_PATHS)
       /* We need also to leave alone a trailing slash in "d:/".  */
       if (len > 3 || (len > 1 && v[1] != ':'))
 #endif
@@ -365,7 +368,7 @@ selective_vpath_search (struct vpath *path, const char *file,
       /* Add the directory prefix already in *FILE.  */
       if (name_dplen > 0)
         {
-#ifndef VMS
+#if !MK_OS_VMS
           *p++ = '/';
 #else
           /* VMS: if this is not in VMS format, treat as Unix format */
@@ -381,7 +384,7 @@ selective_vpath_search (struct vpath *path, const char *file,
         p[-1] = '/';
 #endif
       /* Now add the name-within-directory at the end of NAME.  */
-#ifndef VMS
+#if !MK_OS_VMS
       if (p != name && p[-1] != '/')
         {
           *p = '/';
@@ -440,7 +443,7 @@ selective_vpath_search (struct vpath *path, const char *file,
           /* That file wasn't mentioned in the makefile.
              See if it actually exists.  */
 
-#ifdef VMS
+#if MK_OS_VMS
           /* For VMS syntax just use the original vpath */
           if (*p != '/')
             exists_in_cache = exists = dir_file_exists_p (vpath[i], filename);
@@ -467,7 +470,7 @@ selective_vpath_search (struct vpath *path, const char *file,
 
           struct stat st;
 
-#ifndef VMS
+#if !MK_OS_VMS
           /* Put the slash back in NAME.  */
           *p = '/';
 #else

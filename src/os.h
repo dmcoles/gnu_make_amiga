@@ -1,5 +1,5 @@
 /* Declarations for operating system interfaces for GNU Make.
-Copyright (C) 2016-2023 Free Software Foundation, Inc.
+Copyright (C) 2016-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -20,23 +20,28 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #define IO_STDOUT_OK            0x0008
 #define IO_STDERR_OK            0x0010
 
-#if defined(VMS) || defined(_AMIGA) || defined(__MSDOS__)
-# define check_io_state()  (IO_STDIN_OK|IO_STDOUT_OK|IO_STDERR_OK)
-# define fd_inherit(_i)    (0)
-# define fd_noinherit(_i)  (0)
-# define fd_set_append(_i) (void)(0)
-# define os_anontmp()      (-1)
+#if MK_OS_VMS || MK_OS_DOS || defined(_AMIGA)
+# define check_io_state()       (IO_STDIN_OK|IO_STDOUT_OK|IO_STDERR_OK)
+# define fd_inherit(_i)         (0)
+# define fd_noinherit(_i)       (0)
+# define fd_set_append(_i)      (-1)
+# define fd_reset_append(_i,_f) (void)(0)
+# define os_anontmp()           (-1)
 #else
 
 /* Determine the state of stdin/stdout/stderr.  */
 unsigned int check_io_state (void);
 
 /* Set a file descriptor to close/not close in a subprocess.  */
-void fd_inherit (int);
-void fd_noinherit (int);
+void fd_inherit (int fd);
+void fd_noinherit (int fd);
 
-/* If the file descriptor is for a file put it into append mode.  */
-void fd_set_append (int);
+/* If the file descriptor is for a file put it into append mode.
+   Return the original flags for the file descriptor, or -1 if not found.  */
+int fd_set_append (int fd);
+
+/* Reset the append mode to the flags returned by fd_set_append().  */
+void fd_reset_append (int fd, int flags);
 
 /* Return a file descriptor for a new anonymous temp file, or -1.  */
 int os_anontmp (void);
@@ -151,8 +156,13 @@ void osync_release (void);
 #endif  /* NO_OUTPUT_SYNC */
 
 /* Create a "bad" file descriptor for stdin when parallel jobs are run.  */
-#if defined(VMS) || defined(WINDOWS32) || defined(_AMIGA) || defined(__MSDOS__)
+#if MK_OS_VMS || MK_OS_W32 || MK_OS_DOS || defined(_AMIGA)
 # define get_bad_stdin() (-1)
 #else
 int get_bad_stdin (void);
+#endif
+
+#if MK_OS_W32
+#include <windows.h> /* Needed for HANDLE */
+HANDLE get_handle_for_fd (int);
 #endif

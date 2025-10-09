@@ -1,5 +1,5 @@
 /* Basic dependency engine for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -15,12 +15,6 @@ You should have received a copy of the GNU General Public License along with
 this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "makeint.h"
-#include "filedef.h"
-#include "job.h"
-#include "commands.h"
-#include "dep.h"
-#include "variable.h"
-#include "debug.h"
 
 #include <assert.h>
 
@@ -30,10 +24,10 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <sys/file.h>
 #endif
 
-#ifdef VMS
+#if MK_OS_VMS
 #include <starlet.h>
 #endif
-#ifdef WINDOWS32
+#if MK_OS_W32
 #include <windows.h>
 #include <io.h>
 #include <sys/stat.h>
@@ -44,6 +38,14 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #define STAT stat
 #endif
 #endif
+
+#include "commands.h"
+#include "debug.h"
+#include "dep.h"
+#include "filedef.h"
+#include "job.h"
+#include "variable.h"
+#include "warning.h"
 
 
 /* The test for circular dependencies is based on the 'updating' bit in
@@ -68,6 +70,13 @@ static struct dep *goal_dep;
 /* Current value for pruning the scan of the goal chain.
    All files start with considered == 0.  */
 static unsigned int considered = 0;
+
+/* During processing we might drop some dependencies, which can't be freed
+   immediately because they are still in use.  Remember them: this is mainly
+   to satisfy leak detectors.  */
+static struct dep **dropped_list = NULL;
+static size_t dropped_list_len = 0;
+#define DROPPED_LIST_INCR 5
 
 static enum update_status update_file (struct file *file, unsigned int depth);
 static enum update_status update_file_1 (struct file *file, unsigned int depth);
@@ -94,7 +103,7 @@ check_also_make (const struct file *file)
     for (ad = file->also_make; ad; ad = ad->next)
       if (ad->file->last_mtime == NONEXISTENT_MTIME)
         OS (error, file->cmds ? &file->cmds->fileinfo : NILF,
-            _("warning: pattern recipe did not update peer target '%s'."),
+            _("warning: pattern recipe did not update peer target '%s'"),
             ad->file->name);
 }
 
@@ -112,6 +121,7 @@ update_goal_chain (struct goaldep *goaldeps)
   unsigned long last_cmd_count = 0;
   int t = touch_flag, q = question_flag, n = just_print_flag;
   enum update_status status = us_none;
+  const unsigned int depth = rebuilding_makefiles ? 1 : 0;
 
   /* Duplicate the chain so we can remove things from it.  */
   struct dep *goals_orig = copy_dep_chain ((struct dep *)goaldeps);
@@ -130,6 +140,7 @@ update_goal_chain (struct goaldep *goaldeps)
   while (goals != 0)
     {
       struct dep *gu, *g, *lastgoal;
+      int running = 0, wait = 0;
 
       /* Start jobs that are waiting for the load to go down.  */
 
@@ -147,16 +158,14 @@ update_goal_chain (struct goaldep *goaldeps)
       while (gu != 0)
         {
           /* Iterate over all double-colon entries for this file.  */
-          struct file *file;
-          int stop = 0, any_not_updated = 0;
+          struct file *file, *dchead;
+          int stop = 0, all_updated = 1;
 
           g = gu->shuf ? gu->shuf : gu;
 
           goal_dep = g;
-
-          for (file = g->file->double_colon ? g->file->double_colon : g->file;
-               file != NULL;
-               file = file->prev)
+          dchead = g->file->double_colon ? g->file->double_colon : g->file;
+          for (file = dchead; file != NULL; file = file->prev)
             {
               unsigned int ocommands_started;
               enum update_status fail;
@@ -181,8 +190,24 @@ update_goal_chain (struct goaldep *goaldeps)
                  actually run.  */
               ocommands_started = commands_started;
 
-              fail = update_file (file, rebuilding_makefiles ? 1 : 0);
+              stop = 0;
+
+              /* In the case of double colon rules, only the recipe of the 1st
+                 rule should be blocked by .WAIT. The recipes of all subsequent
+                 rules for the same file will execute sequentially in order
+                 after the 1st.  */
+              wait = file == dchead && g->wait_here && running;
+              if (wait)
+                {
+                  DBF (DB_VERBOSE, _(".WAIT is blocking '%s'.\n"));
+                  break;
+                }
+
+              fail = update_file (file, depth);
               check_renamed (file);
+              running |= (file->command_state == cs_running
+                          || file->command_state == cs_deps_running);
+
 
               /* Set the goal's 'changed' flag if any commands were started
                  by calling update_file above.  We check this flag below to
@@ -190,7 +215,6 @@ update_goal_chain (struct goaldep *goaldeps)
               if (commands_started > ocommands_started)
                 g->changed = 1;
 
-              stop = 0;
               if ((fail || file->updated) && status < us_question)
                 {
                   /* We updated this goal.  Update STATUS and decide whether
@@ -231,7 +255,7 @@ update_goal_chain (struct goaldep *goaldeps)
 
               /* Keep track if any double-colon entry is not finished.
                  When they are all finished, the goal is finished.  */
-              any_not_updated |= !file->updated;
+              all_updated &= file->updated;
 
               file->dontcare = 0;
 
@@ -242,7 +266,10 @@ update_goal_chain (struct goaldep *goaldeps)
           /* Reset FILE since it is null at the end of the loop.  */
           file = g->file;
 
-          if (stop || !any_not_updated)
+          if (wait)
+            break;
+
+          if (stop || all_updated)
             {
               /* If we have found nothing whatever to do for the goal,
                  print a message saying nothing needs doing.  */
@@ -265,21 +292,19 @@ update_goal_chain (struct goaldep *goaldeps)
               else
                 lastgoal->next = gu->next;
 
-              gu = lastgoal == 0 ? goals : lastgoal->next;
-
               if (stop)
                 break;
             }
           else
-            {
-              lastgoal = gu;
-              gu = gu->next;
-            }
+            lastgoal = gu;
+
+          gu = gu->next;
         }
 
       /* If we reached the end of the dependency graph update CONSIDERED
-         for the next pass.  */
-      if (gu == 0)
+         for the next pass.  In the case of waiting, increment CONSIDERED to
+         prevent the same file from getting pruned over and over again.  */
+      if (gu == 0 || wait)
         ++considered;
     }
 
@@ -347,9 +372,15 @@ update_file (struct file *file, unsigned int depth)
     {
       /* Check for the case where a target has been tried and failed but
          the diagnostics haven't been issued. If we need the diagnostics
-         then we will have to continue. */
+         then we will have to continue.
+         In the case of double colon rules, this file cannot be pruned if
+         this recipe finished (file->command_state == cs_finished) and there
+         are more double colon rules for this file. Instead the recipe of the
+         next double colon rule of this file should be run.  */
       if (!(f->updated && f->update_status > us_none
-            && !f->dontcare && f->no_diag))
+            && !f->dontcare && f->no_diag)
+            && !(file->double_colon && file->command_state == cs_finished &&
+                 f->prev))
         {
           DBF (DB_VERBOSE, _("Pruning file '%s'.\n"));
           return f->command_state == cs_finished ? f->update_status : us_success;
@@ -377,7 +408,8 @@ update_file (struct file *file, unsigned int depth)
       if (f->command_state == cs_running
           || f->command_state == cs_deps_running)
         /* Don't run other :: rules for this target until
-           this rule is finished.  */
+           this rule is finished.  Multiple recipes running in parallel and
+           updating the same target will corrupt the target.  */
         return us_success;
 
       if (new > status)
@@ -515,14 +547,19 @@ update_file_1 (struct file *file, unsigned int depth)
   check_renamed (file);
   noexist = this_mtime == NONEXISTENT_MTIME;
   if (noexist)
-    DBF (DB_BASIC, _("File '%s' does not exist.\n"));
+    {
+      if (file->phony)
+        DBF (DB_BASIC, _("Target '%s' is phony.\n"));
+      else
+        DBF (DB_BASIC, _("File '%s' does not exist.\n"));
+    }
   else if (is_ordinary_mtime (this_mtime) && file->low_resolution_time)
     {
       /* Avoid spurious rebuilds due to low resolution time stamps.  */
       int ns = FILE_TIMESTAMP_NS (this_mtime);
       if (ns != 0)
         OS (error, NILF,
-            _("*** Warning: .LOW_RESOLUTION_TIME file '%s' has a high resolution time stamp"),
+            _("*** warning: .LOW_RESOLUTION_TIME file '%s' has a high resolution time stamp"),
             file->name);
       this_mtime += FILE_TIMESTAMPS_PER_S - 1 - ns;
     }
@@ -539,9 +576,14 @@ update_file_1 (struct file *file, unsigned int depth)
       if (noexist)
         {
           check_renamed (adfile);
-          DBS (DB_BASIC,
-               (_("Grouped target peer '%s' of file '%s' does not exist.\n"),
-                adfile->name, file->name));
+          if (adfile->phony)
+            DBS (DB_BASIC,
+                 (_("Grouped target peer '%s' of file '%s' is phony.\n"),
+                  adfile->name, file->name));
+          else
+            DBS (DB_BASIC,
+                 (_("Grouped target peer '%s' of file '%s' does not exist.\n"),
+                  adfile->name, file->name));
         }
       else if (fmtime < this_mtime)
         this_mtime = fmtime;
@@ -605,18 +647,30 @@ update_file_1 (struct file *file, unsigned int depth)
 
           if (is_updating (d->file))
             {
-              OSS (error, NILF, _("Circular %s <- %s dependency dropped."),
-                   file->name, d->file->name);
+              /* Avoid macro warning, bacause its output differs from that of
+                 older makes. */
+              if (warn_error (wt_circular_dep))
+                OSS (fatal, NILF, _("circular %s <- %s dependency detected"),
+                     file->name, d->file->name);
+              if (warn_check (wt_circular_dep))
+                OSS (error, NILF, _("circular %s <- %s dependency dropped"),
+                     file->name, d->file->name);
 
-              /* We cannot free D here because our the caller will still have
-                 a reference to it when we were called recursively via
-                 check_dep below.  */
               if (lastd == 0)
                 file->deps = du->next;
               else
                 lastd->next = du->next;
 
               du = du->next;
+
+              /* We cannot free D here because our the caller will still have
+                 a reference to it when we were called recursively via
+                 check_dep below.  */
+              if (dropped_list_len % DROPPED_LIST_INCR == 0)
+                dropped_list = xrealloc (dropped_list,
+                                         sizeof (struct dep *) * (dropped_list_len + DROPPED_LIST_INCR));
+              dropped_list[dropped_list_len++] = d;
+
               continue;
             }
 
@@ -821,7 +875,12 @@ update_file_1 (struct file *file, unsigned int depth)
           else if (d_mtime == NONEXISTENT_MTIME)
             {
               if (ISDB (DB_BASIC))
-                fmt = _("Prerequisite '%s' of target '%s' does not exist.\n");
+                {
+                  if (d->file->phony)
+                    fmt = _("Prerequisite '%s' of target '%s' is phony.\n");
+                  else
+                    fmt = _("Prerequisite '%s' of target '%s' does not exist.\n");
+                }
             }
           else if (d->changed)
             {
@@ -1054,11 +1113,17 @@ notice_finished_file (struct file *file)
           d->file->update_status = file->update_status;
 
           if (ran && !d->file->phony)
-            /* Fetch the new modification time.
-               We do this instead of just invalidating the cached time
-               so that a vpath_search can happen.  Otherwise, it would
-               never be done because the target is already updated.  */
-            f_mtime (d->file, 0);
+            {
+              /* Fetch the new modification time.
+                 We do this instead of just invalidating the cached time
+                 so that a vpath_search can happen.  Otherwise, it would
+                 never be done because the target is already updated.  */
+              f_mtime (d->file, 0);
+
+              if (just_print_flag)
+                /* Nothing got updated, but pretend it did.  */
+                d->file->last_mtime = NEW_MTIME;
+            }
         }
 
       /* If the target was created by an implicit rule, and it was updated,
@@ -1164,7 +1229,7 @@ check_dep (struct file *file, unsigned int depth,
 
               if (is_updating (d->file))
                 {
-                  OSS (error, NILF, _("Circular %s <- %s dependency dropped."),
+                  OSS (error, NILF, _("circular %s <- %s dependency dropped"),
                        file->name, d->file->name);
                   if (ld == 0)
                     {
@@ -1431,7 +1496,7 @@ f_mtime (struct file *file, int search)
               /* If we found it in VPATH, see if it's in GPATH too; if so,
                  change the name right now; if not, defer until after the
                  dependencies are updated. */
-#ifndef VMS
+#if !MK_OS_VMS
               name_len = strlen (name) - strlen (file->name) - 1;
 #else
               name_len = strlen (name) - strlen (file->name);
@@ -1469,7 +1534,7 @@ f_mtime (struct file *file, int search)
 
       FILE_TIMESTAMP adjusted_mtime = mtime;
 
-#if defined(WINDOWS32) || defined(__MSDOS__)
+#if MK_OS_W32 || MK_OS_DOS
       /* Experimentation has shown that FAT filesystems can set file times
          up to 3 seconds into the future!  Play it safe.  */
 
@@ -1500,7 +1565,7 @@ f_mtime (struct file *file, int search)
               else
                 sprintf (from_now_string, "%.2g", from_now);
               OSS (error, NILF,
-                   _("Warning: File '%s' has modification time %s s in the future"),
+                   _("warning: file '%s' has modification time %s s in the future"),
                    file->name, from_now_string);
               clock_skew_detected = 1;
             }
@@ -1547,14 +1612,14 @@ static FILE_TIMESTAMP
 name_mtime (const char *name)
 {
   FILE_TIMESTAMP mtime;
-#if defined(WINDOWS32)
+#if MK_OS_W32
   struct STAT st;
 #else
   struct stat st;
 #endif
   int e;
 
-#if defined(WINDOWS32)
+#if MK_OS_W32
   {
     char tem[MAX_PATH+1], *tstart, *tend;
     const char *p = name + strlen (name);
@@ -1583,7 +1648,7 @@ name_mtime (const char *name)
         tend = &tem[0];
       }
 
-#if defined(WINDOWS32)
+#if MK_OS_W32
     e = STAT (tem, &st);
 #else
     e = stat (tem, &st);
@@ -1687,13 +1752,13 @@ name_mtime (const char *name)
 static const char *
 library_search (const char *lib, FILE_TIMESTAMP *mtime_ptr)
 {
-  static const char *dirs[] =
+  static const char *const dirs[] =
     {
 #ifndef _AMIGA
       "/lib",
       "/usr/lib",
 #endif
-#if defined(WINDOWS32) && !defined(LIBDIR)
+#if MK_OS_W32 && !defined(LIBDIR)
 /*
  * This is completely up to the user at product install time. Just define
  * a placeholder.
@@ -1717,9 +1782,9 @@ library_search (const char *lib, FILE_TIMESTAMP *mtime_ptr)
   /* Information about the earliest (in the vpath sequence) match.  */
   unsigned int best_vpath = 0, best_path = 0;
 
-  const char **dp;
+  const char *const *dp;
 
-  libpatterns = xstrdup (variable_expand ("$(.LIBPATTERNS)"));
+  libpatterns = allocated_expand_variable (STRING_SIZE_TUPLE (".LIBPATTERNS"));
 
   /* Skip the '-l'.  */
   lib += 2;

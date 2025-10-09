@@ -1,5 +1,5 @@
 /* Windows version of dirent.h
-Copyright (C) 1996-2023 Free Software Foundation, Inc.
+Copyright (C) 1996-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -60,7 +60,7 @@ enum
 
 struct dirent
   {
-    ino_t d_ino;             /* unused - no equivalent on WINDOWS32.  */
+    ino_t d_ino;             /* unused - no equivalent on Windows32.  */
     unsigned char d_type;
     char d_name[NAME_MAX+1]; /* must come last due to dir.c assumptions.  */
   };

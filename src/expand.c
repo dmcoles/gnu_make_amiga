@@ -1,5 +1,5 @@
 /* Variable expansion functions for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -22,8 +22,9 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "debug.h"
 #include "filedef.h"
 #include "job.h"
-#include "variable.h"
 #include "rule.h"
+#include "variable.h"
+#include "warning.h"
 
 /* Initially, any errors reported when expanding strings will be reported
    against the file where the error appears.  */
@@ -46,29 +47,33 @@ const floc **expanding_var = &reading_file;
 static size_t variable_buffer_length;
 char *variable_buffer;
 
-/* Subroutine of variable_expand and friends:
-   The text to add is LENGTH chars starting at STRING to the variable_buffer.
-   The text is added to the buffer at PTR, and the updated pointer into
-   the buffer is returned as the value.  Thus, the value returned by
-   each call to variable_buffer_output should be the first argument to
-   the following call.  */
+/* Append LENGTH chars of STRING at PTR which must point into variable_buffer.
+   The buffer will always be kept nul-terminated.
+   The updated pointer into the buffer is returned as the value.  Thus, the
+   value returned by each call to variable_buffer_output should be the first
+   argument to the following call.  */
 
 char *
 variable_buffer_output (char *ptr, const char *string, size_t length)
 {
   size_t newlen = length + (ptr - variable_buffer);
 
-  if ((newlen + VARIABLE_BUFFER_ZONE) > variable_buffer_length)
+  assert (ptr >= variable_buffer);
+  assert (ptr < variable_buffer + variable_buffer_length);
+
+  if (newlen + VARIABLE_BUFFER_ZONE + 1 > variable_buffer_length)
     {
       size_t offset = ptr - variable_buffer;
       variable_buffer_length = (newlen + 100 > 2 * variable_buffer_length
                                 ? newlen + 100
                                 : 2 * variable_buffer_length);
-      variable_buffer = xrealloc (variable_buffer, variable_buffer_length);
+      variable_buffer = xrealloc (variable_buffer, variable_buffer_length + 1);
       ptr = variable_buffer + offset;
     }
 
-  return mempcpy (ptr, string, length);
+  ptr = mempcpy (ptr, string, length);
+  *ptr = '\0';
+  return ptr;
 }
 
 /* Return a pointer to the beginning of the variable buffer.
@@ -79,16 +84,58 @@ initialize_variable_output ()
 {
   /* If we don't have a variable output buffer yet, get one.  */
 
-  if (variable_buffer == 0)
+  if (!variable_buffer)
     {
       variable_buffer_length = 200;
       variable_buffer = xmalloc (variable_buffer_length);
-      variable_buffer[0] = '\0';
     }
+
+  variable_buffer[0] = '\0';
 
   return variable_buffer;
 }
+
+/* Install a new variable_buffer context, returning the current one for
+   safe-keeping.  */
+
+void
+install_variable_buffer (char **bufp, size_t *lenp)
+{
+  *bufp = variable_buffer;
+  *lenp = variable_buffer_length;
+
+  variable_buffer = NULL;
+  initialize_variable_output ();
+}
+
+/* Free the current variable_buffer and restore a previously-saved one.
+ */
+
+void
+restore_variable_buffer (char *buf, size_t len)
+{
+  free (variable_buffer);
+
+  variable_buffer = buf;
+  variable_buffer_length = len;
+}
+
+/* Restore a previously-saved variable_buffer context, and return the
+   current one.
+ */
+
+char *
+swap_variable_buffer (char *buf, size_t len)
+{
+  char *p = variable_buffer;
+
+  variable_buffer = buf;
+  variable_buffer_length = len;
+
+  return p;
+}
 
+
 /* Recursively expand V.  The returned string is malloc'd.  */
 
 static char *allocated_variable_append (const struct variable *v);
@@ -99,8 +146,10 @@ recursively_expand_for_file (struct variable *v, struct file *file)
   char *value;
   const floc *this_var;
   const floc **saved_varp;
-  struct variable_set_list *save = 0;
+  struct variable_set_list *savev = 0;
   int set_reading = 0;
+  size_t nl = strlen (v->name);
+  struct variable *parent = NULL;
 
 #ifndef _AMIGA
   /* If we're expanding to put into the environment of a shell function then
@@ -108,7 +157,6 @@ recursively_expand_for_file (struct variable *v, struct file *file)
      the value of the environment variable we were started with.  */
   if (v->expanding && env_recursion)
     {
-      size_t nl = strlen (v->name);
       char **ep;
       DB (DB_VERBOSE,
           (_("%s:%lu: not recursively expanding %s to export to shell function\n"),
@@ -117,7 +165,7 @@ recursively_expand_for_file (struct variable *v, struct file *file)
       /* We could create a hash for the original environment for speed, but a
          reasonably written makefile shouldn't hit this situation...  */
       for (ep = environ; *ep != 0; ++ep)
-        if ((*ep)[nl] == '=' && strncmp (*ep, v->name, nl) == 0)
+        if (strncmp (*ep, v->name, nl) == 0 && (*ep)[nl] == '=')
           return xstrdup ((*ep) + nl + 1);
 
       /* If there's nothing in the parent environment, use the empty string.
@@ -147,76 +195,184 @@ recursively_expand_for_file (struct variable *v, struct file *file)
       if (!v->exp_count)
         /* Expanding V causes infinite recursion.  Lose.  */
         OS (fatal, *expanding_var,
-            _("Recursive variable '%s' references itself (eventually)"),
+            _("recursive variable '%s' references itself (eventually)"),
             v->name);
       --v->exp_count;
     }
 
   if (file)
-    {
-      save = current_variable_set_list;
-      current_variable_set_list = file->variables;
-    }
+    install_file_context (file, &savev, NULL);
 
   v->expanding = 1;
   if (v->append)
+    {
+      /* Find a parent definition which is marked override.  */
+      struct variable_set_list *sl;
+      for (sl = current_variable_set_list; sl && !parent; sl = sl->next)
+        {
+          struct variable *vp = lookup_variable_in_set (v->name, nl, sl->set);
+          if (vp && vp != v && vp->origin == o_override)
+            parent = vp;
+        }
+    }
+
+  if (parent)
+    /* PARENT is an override, V is appending.  If V is also an override:
+         override hello := first
+         al%: override hello += second
+       Then construct the value from its appended parts in the parent sets.
+       Else if V is not an override:
+         override hello := first
+         al%: hello += second
+       Then ignore the value of V and use the value of PARENT.  */
+    value = v->origin == o_override
+      ? allocated_variable_append (v)
+      : xstrdup (parent->value);
+  else if (v->origin == o_command || v->origin == o_env_override)
+    /* Avoid appending to a pattern-specific variable, unless the origin of this
+       pattern-specific variable beats or equals the origin of one of the parent
+       definitions of this variable.
+       This is needed, because if there is a command line definition or an env
+       override, then the value defined in the makefile should only be appended
+       in the case of a file override.
+       In the presence of command line definition or env override and absence of
+       makefile override, the value should be expanded, rather than appended. In
+       this case, at parse time record_target_var already set the value of this
+       pattern-specific variable to the value defined on the command line or to
+       the env override value.
+       User provided a command line definition or an env override.
+       PARENT does not have an override directive, so ignore it.  */
+    value = allocated_expand_string (v->value);
+  else if (v->append)
+    /* Construct the value from its appended parts in the parent sets.  */
     value = allocated_variable_append (v);
   else
-    value = allocated_variable_expand (v->value);
+    /* A definition without appending.  */
+    value = allocated_expand_string (v->value);
   v->expanding = 0;
 
   if (set_reading)
     reading_file = 0;
 
   if (file)
-    current_variable_set_list = save;
+    restore_file_context (savev, NULL);
 
   expanding_var = saved_varp;
 
   return value;
 }
 
-/* Expand a simple reference to variable NAME, which is LENGTH chars long.  */
+/* Expand a simple reference to variable NAME, which is LENGTH chars long.
+   The result is written to PTR which must point into the variable_buffer.
+   Returns a pointer to the new end of the variable_buffer.  */
 
-#ifdef __GNUC__
-__inline
-#endif
-static char *
-reference_variable (char *o, const char *name, size_t length)
+char *
+expand_variable_output (char *ptr, const char *name, size_t length)
 {
   struct variable *v;
+  unsigned int recursive;
   char *value;
 
   v = lookup_variable (name, length);
 
-  if (v == 0)
+  if (!v)
     warn_undefined (name, length);
 
   /* If there's no variable by that name or it has no value, stop now.  */
-  if (v == 0 || (*v->value == '\0' && !v->append))
-    return o;
+  if (!v || (v->value[0] == '\0' && !v->append))
+    return ptr;
 
-  value = (v->recursive ? recursively_expand (v) : v->value);
+  /* Remember this since expansion could change it.  */
+  recursive = v->recursive;
 
-  o = variable_buffer_output (o, value, strlen (value));
+  value = recursive ? recursively_expand (v) : v->value;
 
-  if (v->recursive)
+  ptr = variable_buffer_output (ptr, value, strlen (value));
+
+  if (recursive)
     free (value);
 
-  return o;
+  return ptr;
+}
+
+/* Expand a simple reference to variable NAME, which is LENGTH chars long.
+   The result is written to BUF which must point into the variable_buffer.
+   If BUF is NULL, start at the beginning of the current variable_buffer.
+   Returns a pointer to the START of the expanded value of the variable.
+   The returned value is located inside variable_buffer.
+   The returned value is valid until the next call to one of the functions
+   which use variable_buffer.  expand_variable_buf may reallocate
+   variable_buffer and render the passed-in BUF invalid.  */
+
+
+char *
+expand_variable_buf (char *buf, const char *name, size_t length)
+{
+  size_t offs;
+
+  if (!buf)
+    buf = initialize_variable_output ();
+
+  assert (buf >= variable_buffer);
+  assert (buf < variable_buffer + variable_buffer_length);
+  offs = buf - variable_buffer;
+
+  expand_variable_output (buf, name, length);
+  return variable_buffer + offs;
+}
+
+/* Expand a simple reference to variable NAME, which is LENGTH chars long.
+   Returns an allocated buffer containing the value.  */
+
+char *
+allocated_expand_variable (const char *name, size_t length)
+{
+  char *obuf;
+  size_t olen;
+
+  install_variable_buffer (&obuf, &olen);
+
+  expand_variable_output (variable_buffer, name, length);
+
+  return swap_variable_buffer (obuf, olen);
+}
+
+/* Expand a simple reference to variable NAME, which is LENGTH chars long.
+   Error messages refer to the file and line where FILE's commands were found.
+   Expansion uses FILE's variable set list.
+   Returns an allocated buffer containing the value.  */
+
+char *
+allocated_expand_variable_for_file (const char *name, size_t length, struct file *file)
+{
+  char *result;
+  struct variable_set_list *savev;
+  const floc *savef;
+
+  if (!file)
+    return allocated_expand_variable (name, length);
+
+  install_file_context (file, &savev, &savef);
+
+  result = allocated_expand_variable (name, length);
+
+  restore_file_context (savev, savef);
+
+  return result;
 }
 
 /* Scan STRING for variable references and expansion-function calls.  Only
-   LENGTH bytes of STRING are actually scanned.  If LENGTH is -1, scan until
-   a null byte is found.
+   LENGTH bytes of STRING are actually scanned.
+   If LENGTH is SIZE_MAX, scan until a null byte is found.
 
-   Write the results to LINE, which must point into 'variable_buffer'.  If
-   LINE is NULL, start at the beginning of the buffer.
-   Return a pointer to LINE, or to the beginning of the buffer if LINE is
+   Write the results to BUF, which must point into variable_buffer.  If
+   BUF is NULL, start at the beginning of the current variable_buffer.
+
+   Return a pointer to BUF, or to the beginning of the new buffer if BUF is
    NULL.
  */
 char *
-variable_expand_string (char *line, const char *string, size_t length)
+expand_string_buf (char *buf, const char *string, size_t length)
 {
   struct variable *v;
   const char *p, *p1;
@@ -224,16 +380,13 @@ variable_expand_string (char *line, const char *string, size_t length)
   char *o;
   size_t line_offset;
 
-  if (!line)
-    line = initialize_variable_output ();
-  o = line;
-  line_offset = line - variable_buffer;
+  if (!buf)
+    buf = initialize_variable_output ();
+  o = buf;
+  line_offset = buf - variable_buffer;
 
   if (length == 0)
-    {
-      variable_buffer_output (o, "", 1);
-      return variable_buffer;
-    }
+    return variable_buffer;
 
   /* We need a copy of STRING: due to eval, it's possible that it will get
      freed as we process it (it might be the value of a variable that's reset
@@ -272,47 +425,40 @@ variable_expand_string (char *line, const char *string, size_t length)
           {
             char openparen = *p;
             char closeparen = (openparen == '(') ? ')' : '}';
-            const char *begp;
             const char *beg = p + 1;
-            char *op;
             char *abeg = NULL;
             const char *end, *colon;
 
-            op = o;
-            begp = p;
-            if (handle_function (&op, &begp))
-              {
-                o = op;
-                p = begp;
-                break;
-              }
+            if (handle_function (&o, &p))
+              break;
 
             /* Is there a variable reference inside the parens or braces?
                If so, expand it before expanding the entire reference.  */
 
             end = strchr (beg, closeparen);
-            if (end == 0)
+            if (end == NULL)
               /* Unterminated variable reference.  */
               O (fatal, *expanding_var, _("unterminated variable reference"));
             p1 = lindex (beg, end, '$');
-            if (p1 != 0)
+            if (p1 != NULL)
               {
                 /* BEG now points past the opening paren or brace.
                    Count parens or braces until it is matched.  */
-                int count = 0;
+                int count = 1;
                 for (p = beg; *p != '\0'; ++p)
                   {
                     if (*p == openparen)
                       ++count;
-                    else if (*p == closeparen && --count < 0)
+                    else if (*p == closeparen && --count == 0)
                       break;
                   }
-                /* If COUNT is >= 0, there were unmatched opening parens
+                /* If COUNT is > 0, there were unmatched opening parens
                    or braces, so we go to the simple case of a variable name
                    such as '$($(a)'.  */
-                if (count < 0)
+                if (count == 0)
                   {
-                    abeg = expand_argument (beg, p); /* Expand the name.  */
+                    /* Expand the name.  */
+                    abeg = expand_argument (beg, p);
                     beg = abeg;
                     end = strchr (beg, '\0');
                   }
@@ -402,7 +548,7 @@ variable_expand_string (char *line, const char *string, size_t length)
             if (colon == 0)
               /* This is an ordinary variable reference.
                  Look up the value of the variable.  */
-                o = reference_variable (o, beg, end - beg);
+                o = expand_variable_output (o, beg, end - beg);
 
             free (abeg);
           }
@@ -414,7 +560,7 @@ variable_expand_string (char *line, const char *string, size_t length)
 
           /* A $ followed by a random char is a variable reference:
              $a is equivalent to $(a).  */
-          o = reference_variable (o, p, 1);
+          o = expand_variable_output (o, p, 1);
 
           break;
         }
@@ -427,21 +573,10 @@ variable_expand_string (char *line, const char *string, size_t length)
 
   free (save);
 
-  variable_buffer_output (o, "", 1);
   return (variable_buffer + line_offset);
 }
 
-/* Scan LINE for variable references and expansion-function calls.
-   Build in 'variable_buffer' the result of expanding the references and calls.
-   Return the address of the resulting string, which is null-terminated
-   and is valid only until the next time this function is called.  */
 
-char *
-variable_expand (const char *line)
-{
-  return variable_expand_string (NULL, line, SIZE_MAX);
-}
-
 /* Expand an argument for an expansion function.
    The text starting at STR and ending at END is variable-expanded
    into a null-terminated string that is returned as the value.
@@ -458,7 +593,7 @@ expand_argument (const char *str, const char *end)
     return xstrdup ("");
 
   if (!end || *end == '\0')
-    return allocated_variable_expand (str);
+    return allocated_expand_string (str);
 
   if (end - str + 1 > 1000)
     tmp = alloc = xmalloc (end - str + 1);
@@ -468,44 +603,53 @@ expand_argument (const char *str, const char *end)
   memcpy (tmp, str, end - str);
   tmp[end - str] = '\0';
 
-  r = allocated_variable_expand (tmp);
+  r = allocated_expand_string (tmp);
 
   free (alloc);
 
   return r;
 }
 
-/* Expand LINE for FILE.  Error messages refer to the file and line where
-   FILE's commands were found.  Expansion uses FILE's variable set list.  */
+
+/* Expand STRING for FILE, into the current variable_buffer.
+   Error messages refer to the file and line where FILE's commands were found.
+   Expansion uses FILE's variable set list.  */
 
 char *
-variable_expand_for_file (const char *line, struct file *file)
+expand_string_for_file (const char *string, struct file *file)
 {
   char *result;
   struct variable_set_list *savev;
   const floc *savef;
 
-  if (file == 0)
-    return variable_expand (line);
+  if (!file)
+    return expand_string (string);
 
-  savev = current_variable_set_list;
-  current_variable_set_list = file->variables;
+  install_file_context (file, &savev, &savef);
 
-  savef = reading_file;
-  if (file->cmds && file->cmds->fileinfo.filenm)
-    reading_file = &file->cmds->fileinfo;
-  else
-    reading_file = 0;
+  result = expand_string (string);
 
-  result = variable_expand (line);
-
-  current_variable_set_list = savev;
-  reading_file = savef;
+  restore_file_context (savev, savef);
 
   return result;
 }
+
+/* Like expand_string_for_file, but the returned string is malloc'd.  */
+
+char *
+allocated_expand_string_for_file (const char *string, struct file *file)
+{
+  char *obuf;
+  size_t olen;
+
+  install_variable_buffer (&obuf, &olen);
+
+  expand_string_for_file (string, file);
+
+  return swap_variable_buffer (obuf, olen);
+}
 
-/* Like allocated_variable_expand, but for += target-specific variables.
+/* Like allocated_expand_string, but for += target-specific variables.
    First recursively construct the variable value from its appended parts in
    any upper variable sets.  Then expand the resulting value.  */
 
@@ -547,7 +691,7 @@ variable_append (const char *name, size_t length,
   if (! v->recursive)
     return variable_buffer_output (buf, v->value, strlen (v->value));
 
-  buf = variable_expand_string (buf, v->value, strlen (v->value));
+  buf = expand_string_buf (buf, v->value, strlen (v->value));
   return (buf + strlen (buf));
 }
 
@@ -555,68 +699,13 @@ variable_append (const char *name, size_t length,
 static char *
 allocated_variable_append (const struct variable *v)
 {
-  char *val;
-
   /* Construct the appended variable value.  */
+  char *obuf;
+  size_t olen;
 
-  char *obuf = variable_buffer;
-  size_t olen = variable_buffer_length;
+  install_variable_buffer (&obuf, &olen);
 
-  variable_buffer = 0;
+  variable_append (v->name, strlen (v->name), current_variable_set_list, 1);
 
-  val = variable_append (v->name, strlen (v->name),
-                         current_variable_set_list, 1);
-  variable_buffer_output (val, "", 1);
-  val = variable_buffer;
-
-  variable_buffer = obuf;
-  variable_buffer_length = olen;
-
-  return val;
-}
-
-/* Like variable_expand_for_file, but the returned string is malloc'd.
-   This function is called a lot.  It wants to be efficient.  */
-
-char *
-allocated_variable_expand_for_file (const char *line, struct file *file)
-{
-  char *value;
-
-  char *obuf = variable_buffer;
-  size_t olen = variable_buffer_length;
-
-  variable_buffer = 0;
-
-  value = variable_expand_for_file (line, file);
-
-  variable_buffer = obuf;
-  variable_buffer_length = olen;
-
-  return value;
-}
-
-/* Install a new variable_buffer context, returning the current one for
-   safe-keeping.  */
-
-void
-install_variable_buffer (char **bufp, size_t *lenp)
-{
-  *bufp = variable_buffer;
-  *lenp = variable_buffer_length;
-
-  variable_buffer = 0;
-  initialize_variable_output ();
-}
-
-/* Restore a previously-saved variable_buffer setting (free the current one).
- */
-
-void
-restore_variable_buffer (char *buf, size_t len)
-{
-  free (variable_buffer);
-
-  variable_buffer = buf;
-  variable_buffer_length = len;
+  return swap_variable_buffer (obuf, olen);
 }

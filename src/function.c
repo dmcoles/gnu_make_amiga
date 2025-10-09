@@ -1,5 +1,5 @@
 /* Builtin function expansion for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -15,13 +15,14 @@ You should have received a copy of the GNU General Public License along with
 this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "makeint.h"
-#include "filedef.h"
-#include "variable.h"
-#include "dep.h"
-#include "job.h"
-#include "os.h"
+
 #include "commands.h"
 #include "debug.h"
+#include "dep.h"
+#include "filedef.h"
+#include "job.h"
+#include "os.h"
+#include "variable.h"
 
 #ifdef _AMIGA
 #include "amiga.h"
@@ -524,7 +525,7 @@ func_notdir_suffix (char *o, char **argv, const char *funcname)
   int is_suffix = funcname[0] == 's';
   int is_notdir = !is_suffix;
   int stop = MAP_DIRSEP | (is_suffix ? MAP_DOT : 0);
-#ifdef VMS
+#if MK_OS_VMS
   /* For VMS list_iterator points to a comma separated list. To use the common
      [find_]next_token, create a local copy and replace the commas with
      spaces. Obviously, there is a problem if there is a ',' in the VMS filename
@@ -569,7 +570,7 @@ func_notdir_suffix (char *o, char **argv, const char *funcname)
 
       if (is_notdir || p >= p2)
         {
-#ifdef VMS
+#if MK_OS_VMS
           if (vms_comma_separator)
             o = variable_buffer_output (o, ",", 1);
           else
@@ -600,7 +601,7 @@ func_basename_dir (char *o, char **argv, const char *funcname)
   int is_basename = funcname[0] == 'b';
   int is_dir = !is_basename;
   int stop = MAP_DIRSEP | (is_basename ? MAP_DOT : 0) | MAP_NUL;
-#ifdef VMS
+#if MK_OS_VMS
   /* As in func_notdir_suffix ... */
   char *vms_p3 = alloca (strlen(p3) + 1);
   int i;
@@ -629,7 +630,7 @@ func_basename_dir (char *o, char **argv, const char *funcname)
         o = variable_buffer_output (o, p2, 2);
 #endif
       else if (is_dir)
-#ifdef VMS
+#if MK_OS_VMS
         {
           extern int vms_report_unix_paths;
           if (vms_report_unix_paths)
@@ -639,16 +640,16 @@ func_basename_dir (char *o, char **argv, const char *funcname)
         }
 #else
 #ifndef _AMIGA
-      o = variable_buffer_output (o, "./", 2);
+       o = variable_buffer_output (o, "./", 2);
 #else
       ; /* Just a nop...  */
 #endif /* AMIGA */
-#endif /* !VMS */
+#endif /* !MK_OS_VMS */
       else
         /* The entire name is the basename.  */
         o = variable_buffer_output (o, p2, len);
 
-#ifdef VMS
+#if MK_OS_VMS
       if (vms_comma_separator)
         o = variable_buffer_output (o, ",", 1);
       else
@@ -745,8 +746,7 @@ func_words (char *o, char **argv, const char *funcname UNUSED)
   while (find_next_token (&word_iterator, NULL) != 0)
     ++i;
 
-  sprintf (buf, "%u", i);
-  o = variable_buffer_output (o, buf, strlen (buf));
+  o = variable_buffer_output (o, buf, sprintf (buf, "%u", i));
 
   return o;
 }
@@ -893,7 +893,7 @@ func_foreach (char *o, char **argv, const char *funcname UNUSED)
       free (var->value);
       var->value = xstrndup (p, len);
 
-      result = allocated_variable_expand (body);
+      result = allocated_expand_string (body);
 
       o = variable_buffer_output (o, result, strlen (result));
       o = variable_buffer_output (o, " ", 1);
@@ -923,8 +923,6 @@ func_let (char *o, char **argv, const char *funcname UNUSED)
   const char *vp;
   const char *vp_next = varnames;
   const char *list_iterator = list;
-  char *p;
-  size_t len;
   size_t vlen;
 
   push_new_variable_scope ();
@@ -934,8 +932,9 @@ func_let (char *o, char **argv, const char *funcname UNUSED)
   NEXT_TOKEN (vp_next);
   while (*vp_next != '\0')
     {
-      p = find_next_token (&list_iterator, &len);
-      if (*list_iterator != '\0')
+      size_t len;
+      char *p = find_next_token (&list_iterator, &len);
+      if (p && *list_iterator != '\0')
         {
           ++list_iterator;
           p[len] = '\0';
@@ -953,7 +952,7 @@ func_let (char *o, char **argv, const char *funcname UNUSED)
   /* Expand the body in the context of the arguments, adding the result to
      the variable buffer.  */
 
-  o = variable_expand_string (o, body, SIZE_MAX);
+  o = expand_string_buf (o, body, SIZE_MAX);
 
   pop_variable_scope ();
   free (varnames);
@@ -1183,16 +1182,17 @@ func_error (char *o, char **argv, const char *funcname)
     case 'i':
       {
         size_t len = strlen (argv[0]);
-        char *msg = alloca (len + 2);
+        char *msg = xmalloc (len + 2);
         memcpy (msg, argv[0], len);
         msg[len] = '\n';
         msg[len + 1] = '\0';
         outputs (0, msg);
+        free (msg);
         break;
       }
 
     default:
-      OS (fatal, *expanding_var, "Internal error: func_error: '%s'", funcname);
+      OS (fatal, *expanding_var, "INTERNAL: func_error: '%s'", funcname);
     }
 
   /* The warning function expands to the empty string.  */
@@ -1336,6 +1336,8 @@ func_intcmp (char *o, char **argv, const char *funcname UNUSED)
       cmp = (llen > rlen) - (llen < rlen);
       if (cmp == 0)
         cmp = memcmp (lnum, rnum, llen);
+      if (lsign < 0)
+        cmp *= -1;
     }
 
   argv += 2;
@@ -1630,7 +1632,7 @@ shell_completed (int exit_code, int exit_sig)
   define_variable_cname (".SHELLSTATUS", buf, o_override, 0);
 }
 
-#ifdef WINDOWS32
+#if MK_OS_W32
 /*untested*/
 
 #include <windows.h>
@@ -1681,11 +1683,11 @@ windows32_openpipe (int *pipedes, int errfd, pid_t *pid_p, char **command_argv, 
       if (hIn == INVALID_HANDLE_VALUE)
         {
           ON (error, NILF,
-              _("windows32_openpipe: DuplicateHandle(In) failed (e=%lu)\n"), e);
+              _("windows32_openpipe: DuplicateHandle(In) failed (e=%lu)"), e);
           return -1;
         }
     }
-  tmpErr = (HANDLE)_get_osfhandle (errfd);
+  tmpErr = get_handle_for_fd (errfd);
   if (DuplicateHandle (GetCurrentProcess (), tmpErr,
                        GetCurrentProcess (), &hErr,
                        0, TRUE, DUPLICATE_SAME_ACCESS) == FALSE)
@@ -1705,14 +1707,14 @@ windows32_openpipe (int *pipedes, int errfd, pid_t *pid_p, char **command_argv, 
       if (hErr == INVALID_HANDLE_VALUE)
         {
           ON (error, NILF,
-              _("windows32_openpipe: DuplicateHandle(Err) failed (e=%lu)\n"), e);
+              _("windows32_openpipe: DuplicateHandle(Err) failed (e=%lu)"), e);
           return -1;
         }
     }
 
   if (! CreatePipe (&hChildOutRd, &hChildOutWr, &saAttr, 0))
     {
-      ON (error, NILF, _("CreatePipe() failed (e=%lu)\n"), GetLastError());
+      ON (error, NILF, _("CreatePipe() failed (e=%lu)"), GetLastError());
       return -1;
     }
 
@@ -1720,7 +1722,7 @@ windows32_openpipe (int *pipedes, int errfd, pid_t *pid_p, char **command_argv, 
 
   if (!hProcess)
     {
-      O (error, NILF, _("windows32_openpipe(): process_init_fd() failed\n"));
+      O (error, NILF, _("windows32_openpipe(): process_init_fd() failed"));
       return -1;
     }
 
@@ -1760,7 +1762,7 @@ windows32_openpipe (int *pipedes, int errfd, pid_t *pid_p, char **command_argv, 
 #endif
 
 
-#ifdef __MSDOS__
+#if MK_OS_DOS
 FILE *
 msdos_openpipe (int* pipedes, int *pidp, char *text)
 {
@@ -1819,7 +1821,7 @@ msdos_openpipe (int* pipedes, int *pidp, char *text)
   Do shell spawning, with the naughty bits for different OSes.
  */
 
-#ifdef VMS
+#if MK_OS_VMS
 
 /* VMS can't do $(shell ...)  */
 
@@ -1841,15 +1843,15 @@ func_shell_base (char *o, char **argv, int trim_newlines)
   struct childbase child = {0};
   char *batch_filename = NULL;
   int errfd;
-#ifdef __MSDOS__
+#if MK_OS_DOS
   FILE *fpipe;
 #endif
   char **command_argv = NULL;
   int pipedes[2];
   pid_t pid;
 
-#ifndef __MSDOS__
-#ifdef WINDOWS32
+#if !MK_OS_DOS
+#if MK_OS_W32
   /* Reset just_print_flag.  This is needed on Windows when batch files
      are used to run the commands, because we normally refrain from
      creating batch files under -n.  */
@@ -1862,12 +1864,12 @@ func_shell_base (char *o, char **argv, int trim_newlines)
                                          &batch_filename);
   if (command_argv == 0)
     {
-#ifdef WINDOWS32
+#if MK_OS_W32
       just_print_flag = j_p_f;
 #endif
       return o;
     }
-#endif /* !__MSDOS__ */
+#endif /* !MK_OS_DOS */
 
   /* Set up the output in case the shell writes something.  */
   output_start ();
@@ -1877,7 +1879,7 @@ func_shell_base (char *o, char **argv, int trim_newlines)
 
   child.environment = target_environment (NULL, 0);
 
-#if defined(__MSDOS__)
+#if MK_OS_DOS
   fpipe = msdos_openpipe (pipedes, &pid, argv[0]);
   if (pipedes[0] < 0)
     {
@@ -1886,7 +1888,7 @@ func_shell_base (char *o, char **argv, int trim_newlines)
       goto done;
     }
 
-#elif defined(WINDOWS32)
+#elif MK_OS_W32
   windows32_openpipe (pipedes, errfd, &pid, command_argv, child.environment);
   /* Restore the value of just_print_flag.  */
   just_print_flag = j_p_f;
@@ -1932,7 +1934,7 @@ func_shell_base (char *o, char **argv, int trim_newlines)
 
     /* Record the PID for reap_children.  */
     shell_function_pid = pid;
-#ifndef  __MSDOS__
+#if !MK_OS_DOS
     shell_function_completed = 0;
 
     /* Close the write side of the pipe.  We test for -1, since
@@ -1963,7 +1965,7 @@ func_shell_base (char *o, char **argv, int trim_newlines)
     buffer[i] = '\0';
 
     /* Close the read side of the pipe.  */
-#ifdef  __MSDOS__
+#if MK_OS_DOS
     if (fpipe)
       {
         int st = pclose (fpipe);
@@ -2007,7 +2009,6 @@ func_shell_base (char *o, char **argv, int trim_newlines)
 
   return o;
 }
-
 #else   /* _AMIGA */
 
 /* Do the Amiga version of func_shell.  */
@@ -2102,7 +2103,7 @@ func_shell (char *o, char **argv, const char *funcname UNUSED)
 {
   return func_shell_base (o, argv, 1);
 }
-#endif  /* !VMS */
+#endif  /* !MK_OS_VMS */
 
 #ifdef EXPERIMENTAL
 
@@ -2113,7 +2114,8 @@ static char *
 func_eq (char *o, char **argv, char *funcname UNUSED)
 {
   int result = ! strcmp (argv[0], argv[1]);
-  o = variable_buffer_output (o,  result ? "1" : "", result);
+  if (result)
+    o = variable_buffer_output (o,  "1", 1);
   return o;
 }
 
@@ -2128,7 +2130,8 @@ func_not (char *o, char **argv, char *funcname UNUSED)
   int result = 0;
   NEXT_TOKEN (s);
   result = ! (*s);
-  o = variable_buffer_output (o,  result ? "1" : "", result);
+  if (result)
+    o = variable_buffer_output (o,  "1", 1);
   return o;
 }
 #endif
@@ -2208,7 +2211,7 @@ abspath (const char *name, char *apath)
           apath[3] = '/';
           dest++;
           root_len++;
-          /* strncpy above copied one character too many.  */
+          /* memcpy above copied one character too many.  */
           name--;
         }
       else
@@ -2218,7 +2221,7 @@ abspath (const char *name, char *apath)
 
   for (start = end = name; *start != '\0'; start = end)
     {
-      size_t len;
+      ptrdiff_t len;
 
       /* Skip sequence of multiple path-separators.  */
       while (ISDIRSEP (*start))
@@ -2246,7 +2249,7 @@ abspath (const char *name, char *apath)
           if (! ISDIRSEP (dest[-1]))
             *dest++ = '/';
 
-          if (dest + len >= apath_limit)
+          if (apath_limit - dest <= len)
             return NULL;
 
           dest = mempcpy (dest, start, len);
@@ -2277,13 +2280,13 @@ func_realpath (char *o, char **argv, const char *funcname UNUSED)
     {
       if (len < GET_PATH_MAX)
         {
-          char *rp;
+          char *rp, *inend;
           struct stat st;
           PATH_VAR (in);
           PATH_VAR (out);
 
-          strncpy (in, path, len);
-          in[len] = '\0';
+          inend = mempcpy (in, path, len);
+          *inend = '\0';
 
 #ifdef HAVE_REALPATH
           ENULLLOOP (rp, realpath (in, out));
@@ -2452,9 +2455,9 @@ func_abspath (char *o, char **argv, const char *funcname UNUSED)
         {
           PATH_VAR (in);
           PATH_VAR (out);
+          char *inend = mempcpy (in, path, len);
 
-          strncpy (in, path, len);
-          in[len] = '\0';
+          *inend = '\0';
 
           if (abspath (in, out))
             {
@@ -2490,54 +2493,52 @@ static char *func_call (char *o, char **argv, const char *funcname);
 #define FT_ENTRY(_name, _min, _max, _exp, _func) \
   { { (_func) }, STRING_SIZE_TUPLE(_name), (_min), (_max), (_exp), 0, 0 }
 
-static struct function_table_entry function_table_init[] =
+static const struct function_table_entry function_table_init[] =
 {
  /*         Name            MIN MAX EXP? Function */
   FT_ENTRY ("abspath",       0,  1,  1,  func_abspath),
   FT_ENTRY ("addprefix",     2,  2,  1,  func_addsuffix_addprefix),
   FT_ENTRY ("addsuffix",     2,  2,  1,  func_addsuffix_addprefix),
+  FT_ENTRY ("and",           1,  0,  0,  func_and),
   FT_ENTRY ("basename",      0,  1,  1,  func_basename_dir),
+  FT_ENTRY ("call",          1,  0,  1,  func_call),
   FT_ENTRY ("dir",           0,  1,  1,  func_basename_dir),
-  FT_ENTRY ("notdir",        0,  1,  1,  func_notdir_suffix),
-  FT_ENTRY ("subst",         3,  3,  1,  func_subst),
-  FT_ENTRY ("suffix",        0,  1,  1,  func_notdir_suffix),
+  FT_ENTRY ("error",         0,  1,  1,  func_error),
+  FT_ENTRY ("eval",          0,  1,  1,  func_eval),
+  FT_ENTRY ("file",          1,  2,  1,  func_file),
   FT_ENTRY ("filter",        2,  2,  1,  func_filter_filterout),
   FT_ENTRY ("filter-out",    2,  2,  1,  func_filter_filterout),
   FT_ENTRY ("findstring",    2,  2,  1,  func_findstring),
   FT_ENTRY ("firstword",     0,  1,  1,  func_firstword),
   FT_ENTRY ("flavor",        0,  1,  1,  func_flavor),
+  FT_ENTRY ("foreach",       3,  3,  0,  func_foreach),
+  FT_ENTRY ("if",            2,  3,  0,  func_if),
+  FT_ENTRY ("info",          0,  1,  1,  func_error),
+  FT_ENTRY ("intcmp",        2,  5,  0,  func_intcmp),
   FT_ENTRY ("join",          2,  2,  1,  func_join),
   FT_ENTRY ("lastword",      0,  1,  1,  func_lastword),
+  FT_ENTRY ("let",           3,  3,  0,  func_let),
+  FT_ENTRY ("notdir",        0,  1,  1,  func_notdir_suffix),
+  FT_ENTRY ("or",            1,  0,  0,  func_or),
+  FT_ENTRY ("origin",        0,  1,  1,  func_origin),
   FT_ENTRY ("patsubst",      3,  3,  1,  func_patsubst),
   FT_ENTRY ("realpath",      0,  1,  1,  func_realpath),
   FT_ENTRY ("shell",         0,  1,  1,  func_shell),
   FT_ENTRY ("sort",          0,  1,  1,  func_sort),
   FT_ENTRY ("strip",         0,  1,  1,  func_strip),
+  FT_ENTRY ("subst",         3,  3,  1,  func_subst),
+  FT_ENTRY ("suffix",        0,  1,  1,  func_notdir_suffix),
+  FT_ENTRY ("value",         0,  1,  1,  func_value),
+  FT_ENTRY ("warning",       0,  1,  1,  func_error),
   FT_ENTRY ("wildcard",      0,  1,  1,  func_wildcard),
   FT_ENTRY ("word",          2,  2,  1,  func_word),
   FT_ENTRY ("wordlist",      3,  3,  1,  func_wordlist),
   FT_ENTRY ("words",         0,  1,  1,  func_words),
-  FT_ENTRY ("origin",        0,  1,  1,  func_origin),
-  FT_ENTRY ("foreach",       3,  3,  0,  func_foreach),
-  FT_ENTRY ("let",           3,  3,  0,  func_let),
-  FT_ENTRY ("call",          1,  0,  1,  func_call),
-  FT_ENTRY ("info",          0,  1,  1,  func_error),
-  FT_ENTRY ("error",         0,  1,  1,  func_error),
-  FT_ENTRY ("warning",       0,  1,  1,  func_error),
-  FT_ENTRY ("intcmp",        2,  5,  0,  func_intcmp),
-  FT_ENTRY ("if",            2,  3,  0,  func_if),
-  FT_ENTRY ("or",            1,  0,  0,  func_or),
-  FT_ENTRY ("and",           1,  0,  0,  func_and),
-  FT_ENTRY ("value",         0,  1,  1,  func_value),
-  FT_ENTRY ("eval",          0,  1,  1,  func_eval),
-  FT_ENTRY ("file",          1,  2,  1,  func_file),
 #ifdef EXPERIMENTAL
   FT_ENTRY ("eq",            2,  2,  1,  func_eq),
   FT_ENTRY ("not",           0,  1,  1,  func_not),
 #endif
 };
-
-#define FUNCTION_TABLE_ENTRIES (sizeof (function_table_init) / sizeof (struct function_table_entry))
 
 
 /* These must come after the definition of function_table.  */
@@ -2586,7 +2587,8 @@ expand_builtin_function (char *o, unsigned int argc, char **argv,
 /* Check for a function invocation in *STRINGP.  *STRINGP points at the
    opening ( or { and is not null-terminated.  If a function invocation
    is found, expand it into the buffer at *OP, updating *OP, incrementing
-   *STRINGP past the reference and returning nonzero.  If not, return zero.  */
+   *STRINGP past the reference, and return nonzero.
+   If no function is found, return zero and don't change *OP or *STRINGP.  */
 
 int
 handle_function (char **op, const char **stringp)
@@ -2614,10 +2616,10 @@ handle_function (char **op, const char **stringp)
   beg += entry_p->len;
   NEXT_TOKEN (beg);
 
-  /* Find the end of the function invocation, counting nested use of
-     whichever kind of parens we use.  Since we're looking, count commas
-     to get a rough estimate of how many arguments we might have.  The
-     count might be high, but it'll never be low.  */
+  /* Find the end of the function invocation, counting nested use of whichever
+     kind of parens we use.  Don't use skip_reference so we can count commas
+     to get a rough estimate of how many arguments we might have.  The count
+     might be high, but it'll never be low.  */
 
   for (nargs=1, end=beg; *end != '\0'; ++end)
     if (!STOP_SET (*end, MAP_VARSEP|MAP_COMMA))
@@ -2713,7 +2715,6 @@ func_call (char *o, char **argv, const char *funcname UNUSED)
 {
   static unsigned int max_args = 0;
   char *fname;
-  char *body;
   size_t flen;
   unsigned int i;
   int saved_args;
@@ -2751,13 +2752,6 @@ func_call (char *o, char **argv, const char *funcname UNUSED)
   if (v == 0 || *v->value == '\0')
     return o;
 
-  body = alloca (flen + 4);
-  body[0] = '$';
-  body[1] = '(';
-  memcpy (body + 2, fname, flen);
-  body[flen+2] = ')';
-  body[flen+3] = '\0';
-
   /* Set up arguments $(1) .. $(N).  $(0) is the function name.  */
 
   push_new_variable_scope ();
@@ -2766,8 +2760,7 @@ func_call (char *o, char **argv, const char *funcname UNUSED)
     {
       char num[INTSTR_LENGTH];
 
-      sprintf (num, "%u", i);
-      define_variable (num, strlen (num), *argv, o_automatic, 0);
+      define_variable (num, sprintf (num, "%u", i), *argv, o_automatic, 0);
     }
 
   /* If the number of arguments we have is < max_args, it means we're inside
@@ -2779,18 +2772,17 @@ func_call (char *o, char **argv, const char *funcname UNUSED)
     {
       char num[INTSTR_LENGTH];
 
-      sprintf (num, "%u", i);
-      define_variable (num, strlen (num), "", o_automatic, 0);
+      define_variable (num, sprintf (num, "%u", i), "", o_automatic, 0);
     }
 
-  /* Expand the body in the context of the arguments, adding the result to
+  /* Expand the function in the context of the arguments, adding the result to
      the variable buffer.  */
 
   v->exp_count = EXP_COUNT_MAX;
 
   saved_args = max_args;
   max_args = i;
-  o = variable_expand_string (o, body, flen+3);
+  o = expand_variable_output (o, fname, flen);
   max_args = saved_args;
 
   v->exp_count = 0;
@@ -2814,17 +2806,17 @@ define_new_function (const floc *flocp, const char *name,
   len = e - name;
 
   if (len == 0)
-    O (fatal, flocp, _("Empty function name"));
+    O (fatal, flocp, _("empty function name"));
   if (*name == '.' || *e != '\0')
-    OS (fatal, flocp, _("Invalid function name: %s"), name);
+    OS (fatal, flocp, _("invalid function name: %s"), name);
   if (len > 255)
-    OS (fatal, flocp, _("Function name too long: %s"), name);
+    OS (fatal, flocp, _("function name too long: %s"), name);
   if (min > 255)
     ONS (fatal, flocp,
-         _("Invalid minimum argument count (%u) for function %s"), min, name);
+         _("invalid minimum argument count (%u) for function %s"), min, name);
   if (max > 255 || (max && max < min))
     ONS (fatal, flocp,
-         _("Invalid maximum argument count (%u) for function %s"), max, name);
+         _("invalid maximum argument count (%u) for function %s"), max, name);
 
   ent = xmalloc (sizeof (struct function_table_entry));
   ent->name = strcache_add (name);
@@ -2844,9 +2836,9 @@ define_new_function (const floc *flocp, const char *name,
 void
 hash_init_function_table (void)
 {
-  hash_init (&function_table, FUNCTION_TABLE_ENTRIES * 2,
+  hash_init (&function_table, ARRAYLEN (function_table_init) * 2,
              function_table_entry_hash_1, function_table_entry_hash_2,
              function_table_entry_hash_cmp);
   hash_load (&function_table, function_table_init,
-             FUNCTION_TABLE_ENTRIES, sizeof (struct function_table_entry));
+             ARRAYLEN (function_table_init), sizeof (struct function_table_entry));
 }

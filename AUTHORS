@@ -32,9 +32,6 @@ GNU Make porting efforts:
         John W. Eaton <jwe@bevo.che.wisc.edu>
         Martin Zinser <zinser@decus.decus.de>
 
-  Port to Amiga by:
-      Aaron Digulla <digulla@fh-konstanz.de>
-
   Port to MS-Windows (native/MinGW) maintained by:
       Eli Zaretskii <eliz@gnu.org>
 
@@ -56,6 +53,7 @@ GNU Make porting efforts:
 Other contributors:
 
   Luke Allardyce <lukeallardyce@gmail.com>
+  Costas Argyris <costas.argyris@gmail.com>
   Aron Barath <baratharon@caesar.elte.hu>
   David Boyce <dsb@boyski.com>
   Kevin Buettner <kevinb@redhat.com>
@@ -65,6 +63,8 @@ Other contributors:
   Joe Crayne <oh.hello.joe@gmail.com>
   Jeremy Devenport <jeremy.devenport@gmail.com>
   Pete Dietl <petedietl@gmail.com>
+  Aaron Digulla <digulla@fh-konstanz.de>
+  Hannes Domani <ssbssa@yahoo.de>
   Martin Dorey <martin.dorey@hds.com>
   Christian Eggers <ceggers@arri.de>
   Paul Eggert <eggert@twinsun.com>
@@ -97,6 +97,7 @@ Other contributors:
   Carl Staelin (Princeton University)
   Ian Stewartson (Data Logic Limited)
   Tobias Stoeckmann <tobias@stoeckmann.org>
+  Torbjörn Svensson <torbjorn.svensson@foss.st.com>
   Sergei Trofimovich <siarheit@google.com>
   Justine Tunney <jtunney@gmail.com>
   Marc Ullman <marc@mathworks.com>
@@ -111,7 +112,7 @@ With suggestions/comments/bug reports from a cast of ... well ...
 hundreds, anyway :)
 
 -------------------------------------------------------------------------------
-Copyright (C) 1997-2023 Free Software Foundation, Inc.
+Copyright (C) 1997-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the

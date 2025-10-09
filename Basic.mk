@@ -31,7 +31,7 @@ all:
 src = src/
 lib = lib/
 
-make_SOURCES = $(src)ar.c $(src)arscan.c $(src)commands.c $(src)default.c $(src)dir.c $(src)expand.c $(src)file.c $(src)function.c $(src)getopt.c $(src)getopt1.c $(src)guile.c $(src)hash.c $(src)implicit.c $(src)job.c $(src)load.c $(src)loadapi.c $(src)main.c $(src)misc.c $(src)output.c $(src)read.c $(src)remake.c $(src)rule.c $(src)shuffle.c $(src)signame.c $(src)strcache.c $(src)variable.c $(src)version.c $(src)vpath.c
+make_SOURCES = $(src)ar.c $(src)arscan.c $(src)commands.c $(src)default.c $(src)dir.c $(src)expand.c $(src)file.c $(src)function.c $(src)getopt.c $(src)getopt1.c $(src)guile.c $(src)hash.c $(src)implicit.c $(src)job.c $(src)load.c $(src)loadapi.c $(src)main.c $(src)misc.c $(src)output.c $(src)read.c $(src)remake.c $(src)rule.c $(src)shuffle.c $(src)signame.c $(src)strcache.c $(src)variable.c $(src)version.c $(src)vpath.c $(src)warning.c 
 glob_SOURCES = $(lib)fnmatch.c $(lib)glob.c
 loadavg_SOURCES = $(lib)getloadavg.c
 alloca_SOURCES = $(lib)alloca.c

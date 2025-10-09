@@ -1,5 +1,5 @@
 /* Library function for scanning an archive file.
-Copyright (C) 1987-2023 Free Software Foundation, Inc.
+Copyright (C) 1987-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -29,7 +29,7 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #ifndef NO_ARCHIVES
 
-#ifdef VMS
+#if MK_OS_VMS
 #include <lbrdef.h>
 #include <mhddef.h>
 #include <credef.h>
@@ -289,11 +289,11 @@ ar_scan (const char *archive, ar_member_func_t function, const void *varg)
   return -2;
 }
 
-#else /* !VMS */
+#else /* !MK_OS_VMS */
 
 /* SCO Unix's compiler defines both of these.  */
-#ifdef  M_UNIX
-#undef  M_XENIX
+#ifdef M_UNIX
+#undef M_XENIX
 #endif
 
 /* On the sun386i and in System V rel 3, ar.h defines two different archive
@@ -302,7 +302,7 @@ ar_scan (const char *archive, ar_member_func_t function, const void *varg)
    to have a nonzero value.  */
 
 #if (!defined (PORTAR) || PORTAR == 0) && (!defined (PORT5AR) || PORT5AR == 0)
-#undef  PORTAR
+#undef PORTAR
 #ifdef M_XENIX
 /* According to Jim Sievert <jas1@rsvl.unisys.com>, for SCO XENIX defining
    PORTAR to 1 gets the wrong archive format, and defining it to 0 gets the
@@ -330,7 +330,7 @@ ar_scan (const char *archive, ar_member_func_t function, const void *varg)
 # define __AR_BIG__
 #endif
 
-#ifndef WINDOWS32
+#if !MK_OS_W32
 # if !defined (__ANDROID__) && !defined (__BEOS__) && !defined(MK_OS_ZOS)
 #  include <ar.h>
 # else
@@ -395,16 +395,12 @@ parse_int (const char *ptr, const size_t len, const int base, uintmax_t max,
 
   while (ptr < ep && *ptr != ' ')
     {
-      uintmax_t nv;
-
-      if (*ptr < '0' || *ptr > maxchar)
+      if (*ptr < '0' || *ptr > maxchar
+          || INT_MULTIPLY_WRAPV (val, base, &val)
+          || INT_ADD_WRAPV (val, *ptr - '0', &val)
+          || val > max)
         OSSS (fatal, NILF,
-              _("Invalid %s for archive %s member %s"), type, archive, name);
-      nv = (val * base) + (*ptr - '0');
-      if (nv < val || nv > max)
-        OSSS (fatal, NILF,
-              _("Invalid %s for archive %s member %s"), type, archive, name);
-      val = nv;
+              _("invalid %s for archive %s member %s"), type, archive, name);
       ++ptr;
     }
 
@@ -841,7 +837,7 @@ ar_scan (const char *archive, ar_member_func_t function, const void *arg)
   close (desc);
   return -2;
 }
-#endif /* !VMS */
+#endif /* !MK_OS_VMS */
 
 /* Return nonzero iff NAME matches MEM.
    If TRUNCATED is nonzero, MEM may be truncated to
@@ -852,11 +848,16 @@ ar_name_equal (const char *name, const char *mem, int truncated)
 {
   const char *p;
 
+  /* GNU ar allows -P to preserve parent paths, so test the literal name
+     before stripping off the directory.  */
+  if (streq (name, mem))
+    return 1;
+
   p = strrchr (name, '/');
   if (p != 0)
     name = p + 1;
 
-#ifndef VMS
+#if !MK_OS_VMS
   if (truncated)
     {
 #ifdef AIAMAG
@@ -896,10 +897,10 @@ ar_name_equal (const char *name, const char *mem, int truncated)
       match = !strcasecmp (name, mem);
     return match;
   }
-#endif /* !VMS */
+#endif /* !MK_OS_VMS */
 }
 
-#ifndef VMS
+#if !MK_OS_VMS
 /* ARGSUSED */
 static intmax_t
 ar_member_pos (int desc UNUSED, const char *mem, int truncated,
@@ -953,7 +954,7 @@ ar_member_touch (const char *arname, const char *memname)
   if (r < 0)
     goto lose;
   /* Advance member's time to that time */
-#if defined(ARFMAG) || defined(ARFZMAG) || defined(AIAMAG) || defined(WINDOWS32)
+#if defined(ARFMAG) || defined(ARFZMAG) || defined(AIAMAG) || MK_OS_W32
   datelen = snprintf (TOCHAR (ar_hdr.ar_date), sizeof ar_hdr.ar_date,
                       "%" PRIdMAX, (intmax_t) statbuf.st_mtime);
   if (! (0 <= datelen && datelen < (int) sizeof ar_hdr.ar_date))

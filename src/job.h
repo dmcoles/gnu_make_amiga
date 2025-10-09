@@ -1,5 +1,5 @@
 /* Definitions for managing subprocesses in GNU Make.
-Copyright (C) 1992-2023 Free Software Foundation, Inc.
+Copyright (C) 1992-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -18,7 +18,7 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 /* Structure describing a running or dead child process.  */
 
-#ifdef VMS
+#if MK_OS_VMS
 #define VMSCHILD                                                        \
     char *comname;              /* Temporary command file name */       \
     int efn;                    /* Completion event flag number */      \
@@ -83,7 +83,7 @@ pid_t child_execute_job (struct childbase *child, int good_stdin, char **argv);
 #ifdef _AMIGA
 void exec_command (char **argv) NORETURN;
 #else
-pid_t exec_command (char **argv, char **envp);
+ pid_t exec_command (char **argv, char **envp);
 #endif
 
 void unblock_all_sigs (void);

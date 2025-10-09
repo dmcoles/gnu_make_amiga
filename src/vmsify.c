@@ -1,5 +1,5 @@
 /* vmsify.c -- Module for vms <-> unix file name conversion
-Copyright (C) 1996-2023 Free Software Foundation, Inc.
+Copyright (C) 1996-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -24,7 +24,7 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "makeint.h"
 
-#if VMS
+#if MK_OS_VMS
 #include <unixlib.h>
 #include <stdlib.h>
 #include <jpidef.h>

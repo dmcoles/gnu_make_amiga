@@ -3,7 +3,7 @@
    Please do not send bug reports or questions about it to
    the Make maintainers.
 
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -20,17 +20,17 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "makeint.h"
 
-#include "filedef.h"
-#include "job.h"
-#include "commands.h"
-#include "debug.h"
-
 #if HAVE_SYS_TIME_H
 # include <sys/time.h>
 #endif
 #include <netdb.h>
 
 #include "customs.h"
+
+#include "commands.h"
+#include "debug.h"
+#include "filedef.h"
+#include "job.h"
 
 char *remote_description = "Customs";
 

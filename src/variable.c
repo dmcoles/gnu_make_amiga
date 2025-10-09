@@ -1,5 +1,5 @@
 /* Internals of variables for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -16,20 +16,22 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "makeint.h"
 
+#include "variable.h"
+
 #include <assert.h>
 
-#include "filedef.h"
+#include "commands.h"
 #include "debug.h"
 #include "dep.h"
+#include "filedef.h"
+#include "hash.h"
 #include "job.h"
-#include "commands.h"
-#include "variable.h"
 #include "os.h"
-#include "rule.h"
-#ifdef WINDOWS32
+#if MK_OS_W32
 #include "pathstuff.h"
 #endif
-#include "hash.h"
+#include "rule.h"
+#include "warning.h"
 
 /* Incremented every time we enter target_environment().  */
 unsigned long long env_recursion = 0;
@@ -183,6 +185,24 @@ struct variable_set_list *current_variable_set_list = &global_setlist;
 
 /* Implement variables.  */
 
+static void
+check_valid_name (const floc* flocp, const char *name, size_t length)
+{
+  const char *cp, *end;
+
+  if (!warn_check (wt_invalid_var))
+    return;
+
+  for (cp = name, end = name + length; cp < end; ++cp)
+    if (ISSPACE (*cp))
+      break;
+  if (cp == end)
+    return;
+
+  warning (wt_invalid_var, flocp,
+           ONS (format, 0, _("invalid variable name '%.*s'"), (int)length, name));
+}
+
 void
 init_hash_global_variable_set (void)
 {
@@ -207,6 +227,8 @@ define_variable_in_set (const char *name, size_t length,
   struct variable **var_slot;
   struct variable var_key;
 
+  check_valid_name (flocp, name, length);
+
   if (set == NULL)
     set = &global_variable_set;
 
@@ -215,7 +237,7 @@ define_variable_in_set (const char *name, size_t length,
   var_slot = (struct variable **) hash_find_slot (&set->table, &var_key);
   v = *var_slot;
 
-#ifdef VMS
+#if MK_OS_VMS
   /* VMS does not populate envp[] with DCL symbols and logical names which
      historically are mapped to environment variables.
      If the variable is not yet defined, then we need to check if getenv()
@@ -329,13 +351,15 @@ free_variable_set (struct variable_set_list *list)
 }
 
 void
-undefine_variable_in_set (const char *name, size_t length,
+undefine_variable_in_set (const floc *flocp, const char *name, size_t length,
                           enum variable_origin origin,
                           struct variable_set *set)
 {
   struct variable *v;
   struct variable **var_slot;
   struct variable var_key;
+
+  check_valid_name (flocp, name, length);
 
   if (set == NULL)
     set = &global_variable_set;
@@ -451,6 +475,25 @@ lookup_special_var (struct variable *var)
 }
 
 
+/* Check the variable name for validity.  */
+static void
+check_variable_reference (const char *name, size_t length)
+{
+  const char *cp, *end;
+
+  if (!warn_check (wt_invalid_ref))
+    return;
+
+  for (cp = name, end = name + length; cp < end; ++cp)
+    if (ISSPACE (*cp))
+      break;
+  if (cp == end)
+    return;
+
+  warning (wt_invalid_ref, *expanding_var,
+           ONS (format, 0, _("invalid variable reference '%.*s'"), (int)length, name));
+}
+
 /* Lookup a variable whose name is a string starting at NAME
    and with LENGTH chars.  NAME need not be null-terminated.
    Returns address of the 'struct variable' containing all info
@@ -462,6 +505,8 @@ lookup_variable (const char *name, size_t length)
   const struct variable_set_list *setlist;
   struct variable var_key;
   int is_parent = 0;
+
+  check_variable_reference (name, length);
 
   var_key.name = (char *) name;
   var_key.length = (unsigned int) length;
@@ -479,7 +524,7 @@ lookup_variable (const char *name, size_t length)
       is_parent |= setlist->next_is_parent;
     }
 
-#ifdef VMS
+#if MK_OS_VMS
   /* VMS doesn't populate envp[] with DCL symbols and logical names, which
      historically are mapped to environment variables and returned by
      getenv().  */
@@ -520,9 +565,7 @@ lookup_variable (const char *name, size_t length)
                     *nptr++ = '$';
                   }
                 else
-                  {
-                    *nptr++ = *sptr;
-                  }
+                  *nptr++ = *sptr;
                 sptr++;
               }
 
@@ -534,7 +577,7 @@ lookup_variable (const char *name, size_t length)
         return define_variable (vname, length, value, o_env, 1);
       }
   }
-#endif /* VMS */
+#endif /* MK_OS_VMS */
 
   return 0;
 }
@@ -552,12 +595,11 @@ lookup_variable_for_file (const char *name, size_t length, struct file *file)
   if (file == NULL)
     return lookup_variable (name, length);
 
-  savev = current_variable_set_list;
-  current_variable_set_list = file->variables;
+  install_file_context (file, &savev, NULL);
 
   var = lookup_variable (name, length);
 
-  current_variable_set_list = savev;
+  restore_file_context (savev, NULL);
 
   return var;
 }
@@ -572,6 +614,8 @@ lookup_variable_in_set (const char *name, size_t length,
                         const struct variable_set *set)
 {
   struct variable var_key;
+
+  check_variable_reference (name, length);
 
   var_key.name = (char *) name;
   var_key.length = (unsigned int) length;
@@ -659,12 +703,10 @@ initialize_file_variables (struct file *file, int reading)
                   v->flavor = f_simple;
                 }
               else
-                {
-                  v = do_variable_definition (
-                    &p->variable.fileinfo, p->variable.name,
-                    p->variable.value, p->variable.origin,
-                    p->variable.flavor, 1);
-                }
+                v = do_variable_definition (
+                  &p->variable.fileinfo, p->variable.name, p->variable.value,
+                  p->variable.origin, p->variable.flavor,
+                  p->variable.conditional, s_pattern);
 
               /* Also mark it as a per-target and copy export status. */
               v->per_target = p->variable.per_target;
@@ -733,7 +775,7 @@ push_new_variable_scope (void)
       global_setlist.next = current_variable_set_list;
       current_variable_set_list = &global_setlist;
     }
-  return (current_variable_set_list);
+  return current_variable_set_list;
 }
 
 void
@@ -770,6 +812,39 @@ pop_variable_scope (void)
   hash_free (&set->table, 1);
   free (set);
 }
+
+/* Install a new global context for FILE so that errors/warnings are shown
+   in that context.  Sets OLDLIST to the previous list, and if not NULL sets
+   OLDFLOC to reading_file and changes reading_file to the current FILE.
+   Use restore_file_context() to undo this.  */
+
+void
+install_file_context (struct file *file, struct variable_set_list **oldlist, const floc **oldfloc)
+{
+  *oldlist = current_variable_set_list;
+  current_variable_set_list = file->variables;
+
+  if (oldfloc)
+    {
+      *oldfloc = reading_file;
+      if (file->cmds && file->cmds->fileinfo.filenm)
+        reading_file = &file->cmds->fileinfo;
+      else
+        reading_file = NULL;
+    }
+}
+
+/* Restore a saved global context from OLDLIST.  If OLDFLOC is not NULL,
+   set reading_file back to that value.  */
+
+void
+restore_file_context (struct variable_set_list *oldlist, const floc *oldfloc)
+{
+  current_variable_set_list = oldlist;
+  if (oldfloc)
+    reading_file = oldfloc;
+}
+
 
 /* Merge FROM_SET into TO_SET, freeing unused storage in FROM_SET.  */
 
@@ -871,7 +946,7 @@ define_automatic_variables (void)
   define_variable_cname ("MAKE_VERSION", buf, o_default, 0);
   define_variable_cname ("MAKE_HOST", make_host, o_default, 0);
 
-#ifdef  __MSDOS__
+#if MK_OS_DOS
   /* Allow to specify a special shell just for Make,
      and use $COMSPEC as the default $SHELL when appropriate.  */
   {
@@ -893,7 +968,7 @@ define_automatic_variables (void)
           (void) define_variable (shell_str, shlen, comp->value, o_env, 0);
       }
   }
-#elif defined(__EMX__)
+#elif MK_OS_OS2
   {
     static char shell_str[] = "SHELL";
     const int shlen = sizeof (shell_str) - 1;
@@ -946,7 +1021,7 @@ define_automatic_variables (void)
   /* This won't override any definition, but it will provide one if there
      isn't one there.  */
   v = define_variable_cname ("SHELL", default_shell, o_default, 0);
-#ifdef __MSDOS__
+#if MK_OS_DOS
   v->export = v_export;  /*  Export always SHELL.  */
 #endif
 
@@ -954,7 +1029,7 @@ define_automatic_variables (void)
      environment variable on MSDOS, so whoever sets it, does that on purpose.
      On OS/2 we do not use SHELL from environment but we have already handled
      that problem above. */
-#if !defined(__MSDOS__) && !defined(__EMX__)
+#if !MK_OS_DOS && !MK_OS_OS2
   /* Don't let SHELL come from the environment.  */
   if (*v->value == '\0' || v->origin == o_env || v->origin == o_env_override)
     {
@@ -971,7 +1046,7 @@ define_automatic_variables (void)
   /* Define the magic D and F variables in terms of
      the automatic variables they are variations of.  */
 
-#if defined(__MSDOS__) || defined(WINDOWS32)
+#if MK_OS_DOS || MK_OS_W32
   /* For consistency, remove the trailing backslash as well as slash.  */
   define_variable_cname ("@D", "$(patsubst %/,%,$(patsubst %\\,%,$(dir $@)))",
                          o_automatic, 1);
@@ -987,7 +1062,7 @@ define_automatic_variables (void)
                          o_automatic, 1);
   define_variable_cname ("+D", "$(patsubst %/,%,$(patsubst %\\,%,$(dir $+)))",
                          o_automatic, 1);
-#else  /* not __MSDOS__, not WINDOWS32 */
+#else  /* not MK_OS_DOS, not MK_OS_W32 */
   define_variable_cname ("@D", "$(patsubst %/,%,$(dir $@))", o_automatic, 1);
   define_variable_cname ("%D", "$(patsubst %/,%,$(dir $%))", o_automatic, 1);
   define_variable_cname ("*D", "$(patsubst %/,%,$(dir $*))", o_automatic, 1);
@@ -1005,7 +1080,6 @@ define_automatic_variables (void)
   define_variable_cname ("+F", "$(notdir $+)", o_automatic, 1);
 }
 
-int export_all_variables;
 
 static int
 should_export (const struct variable *v)
@@ -1210,7 +1284,7 @@ target_environment (struct file *file, int recursive)
               }
           }
 
-#ifdef WINDOWS32
+#if MK_OS_W32
         if (streq (v->name, "Path") || streq (v->name, "PATH"))
           {
             if (!cp)
@@ -1252,11 +1326,18 @@ set_special_var (struct variable *var, enum variable_origin origin)
     reset_makeflags (origin);
 
   else if (streq (var->name, RECIPEPREFIX_NAME))
+    /* The user is resetting the command introduction prefix.  This has to
+       happen immediately, so that subsequent rules are interpreted
+       properly.  */
+    cmd_prefix = var->value[0]=='\0' ? RECIPEPREFIX_DEFAULT : var->value[0];
+
+  else if (streq (var->name, WARNINGS_NAME))
     {
-      /* The user is resetting the command introduction prefix.  This has to
-         happen immediately, so that subsequent rules are interpreted
-         properly.  */
-      cmd_prefix = var->value[0]=='\0' ? RECIPEPREFIX_DEFAULT : var->value[0];
+      /* It's weird but for .WARNINGS to make sense we need to expand them
+         when they are set, even if it's a recursive variable.  */
+      char *actions = allocated_expand_variable (STRING_SIZE_TUPLE (WARNINGS_NAME));
+      decode_warn_actions (actions, &var->fileinfo);
+      free (actions);
     }
 
   return var;
@@ -1272,32 +1353,36 @@ shell_result (const char *p)
   char *buf;
   size_t len;
   char *args[2];
-  char *result;
 
   install_variable_buffer (&buf, &len);
 
   args[0] = (char *) p;
   args[1] = NULL;
-  variable_buffer_output (func_shell_base (variable_buffer, args, 0), "\0", 1);
-  result = strdup (variable_buffer);
+  func_shell_base (variable_buffer, args, 0);
 
-  restore_variable_buffer (buf, len);
-  return result;
+  return swap_variable_buffer (buf, len);
 }
 
 /* Given a variable, a value, and a flavor, define the variable.
    See the try_variable_definition() function for details on the parameters. */
 
 struct variable *
-do_variable_definition (const floc *flocp, const char *varname,
-                        const char *value, enum variable_origin origin,
-                        enum variable_flavor flavor, int target_var)
+do_variable_definition (const floc *flocp, const char *varname, const char *value,
+                        enum variable_origin origin, enum variable_flavor flavor,
+                        int conditional, enum variable_scope scope)
 {
   const char *newval;
   char *alloc_value = NULL;
   struct variable *v;
   int append = 0;
-  int conditional = 0;
+
+  /* Conditional variable definition: only set if the var is not defined. */
+  if (conditional)
+    {
+      v = lookup_variable (varname, strlen (varname));
+      if (v)
+        return v;
+    }
 
   /* Calculate the variable's new value in VALUE.  */
 
@@ -1308,14 +1393,14 @@ do_variable_definition (const floc *flocp, const char *varname,
          We have to allocate memory since otherwise it'll clobber the
          variable buffer, and we may still need that if we're looking at a
          target-specific variable.  */
-      newval = alloc_value = allocated_variable_expand (value);
+      newval = alloc_value = allocated_expand_string (value);
       break;
     case f_expand:
       {
         /* A POSIX "var :::= value" assignment.  Expand the value, then it
            becomes a recursive variable.  After expansion convert all '$'
            tokens to '$$' to resolve to '$' when recursively expanded.  */
-        char *t = allocated_variable_expand (value);
+        char *t = allocated_expand_string (value);
         char *np = alloc_value = xmalloc (strlen (t) * 2 + 1);
         char *op = t;
         while (op[0] != '\0')
@@ -1333,23 +1418,13 @@ do_variable_definition (const floc *flocp, const char *varname,
       {
         /* A shell definition "var != value".  Expand value, pass it to
            the shell, and store the result in recursively-expanded var. */
-        char *q = allocated_variable_expand (value);
+        char *q = allocated_expand_string (value);
         alloc_value = shell_result (q);
         free (q);
         flavor = f_recursive;
         newval = alloc_value;
         break;
       }
-    case f_conditional:
-      /* A conditional variable definition "var ?= value".
-         The value is set IFF the variable is not defined yet. */
-      v = lookup_variable (varname, strlen (varname));
-      if (v)
-        goto done;
-
-      conditional = 1;
-      flavor = f_recursive;
-      /* FALLTHROUGH */
     case f_recursive:
       /* A recursive variable definition "var = value".
          The value is used verbatim.  */
@@ -1358,27 +1433,54 @@ do_variable_definition (const floc *flocp, const char *varname,
     case f_append:
     case f_append_value:
       {
-        /* If we have += but we're in a target variable context, we want to
-           append only with other variables in the context of this target.  */
-        if (target_var)
+        int override = 0;
+        if (scope == s_global)
+          v = lookup_variable (varname, strlen (varname));
+        else
           {
+            /* When appending in a target/pattern variable context, we want to
+               append only with other variables in the context of this
+               target/pattern.  */
             append = 1;
             v = lookup_variable_in_set (varname, strlen (varname),
                                         current_variable_set_list->set);
+            if (v)
+              {
+                /* Don't append from the global set if a previous non-appending
+                   target/pattern-specific variable definition exists. */
+                if (!v->append)
+                  append = 0;
 
-            /* Don't append from the global set if a previous non-appending
-               target-specific variable definition exists. */
-            if (v && !v->append)
-              append = 0;
+                if (scope == s_pattern &&
+                    (v->origin == o_env_override || v->origin == o_command))
+                  {
+                    /* This is the case of multiple target/pattern specific
+                       definitions/appends, e.g.
+                         al%: hello := first
+                         al%: hello += second
+                       in the presence of a command line definition or an
+                       env override.  Do not merge x->value and value here.
+                       For pattern-specific variables the values are merged in
+                       recursively_expand_for_file.  */
+                    override = 1;
+                    append = 1;
+                  }
+              }
           }
-        else
-          v = lookup_variable (varname, strlen (varname));
 
-        if (v == 0)
+        if (!v)
           {
-            /* There was no old value.
-               This becomes a normal recursive definition.  */
+            /* There was no old value: make this a recursive definition.  */
             newval = value;
+            flavor = f_recursive;
+          }
+        else if (override)
+          {
+            /* Command line definition / env override takes precedence over
+               a pattern/target-specific append.  */
+            newval = value;
+            /* Set flavor to f_recursive to recursively expand this variable
+               at build time in recursively_expand_for_file.  */
             flavor = f_recursive;
           }
         else
@@ -1401,7 +1503,7 @@ do_variable_definition (const floc *flocp, const char *varname,
                  when it was set; and from the expanded new value.  Allocate
                  memory for the expansion as we may still need the rest of the
                  buffer if we're looking at a target-specific variable.  */
-              val = tp = allocated_variable_expand (val);
+              val = tp = allocated_expand_string (val);
 
             /* If the new value is empty, nothing to do.  */
             vallen = strlen (val);
@@ -1419,7 +1521,7 @@ do_variable_definition (const floc *flocp, const char *varname,
               {
                 char *s;
                 if (streq (varname, MAKEFLAGS_NAME)
-                    && (s = strstr (v->value, " -- ")))
+                    && (s = strstr (v->value, " -- ")) != NULL)
                   /* We found a separator in MAKEFLAGS.  Ignore variable
                      assignments: set_special_var() will reconstruct things.  */
                   cp = mempcpy (cp, v->value, s - v->value);
@@ -1442,7 +1544,7 @@ do_variable_definition (const floc *flocp, const char *varname,
 
   assert (newval);
 
-#ifdef __MSDOS__
+#if MK_OS_DOS
   /* Many Unix Makefiles include a line saying "SHELL=/bin/sh", but
      non-Unix systems don't conform to this default configuration (in
      fact, most of them don't even have '/bin').  On the other hand,
@@ -1522,8 +1624,8 @@ do_variable_definition (const floc *flocp, const char *varname,
         }
     }
   else
-#endif /* __MSDOS__ */
-#ifdef WINDOWS32
+#endif /* MK_OS_DOS */
+#if MK_OS_W32
   if ((origin == o_file || origin == o_override || origin == o_command)
       && streq (varname, "SHELL"))
     {
@@ -1537,9 +1639,8 @@ do_variable_definition (const floc *flocp, const char *varname,
         {
           v = define_variable_in_set (varname, strlen (varname), default_shell,
                                       origin, flavor == f_recursive,
-                                      (target_var
-                                       ? current_variable_set_list->set
-                                       : NULL),
+                                      (scope == s_global ? NULL
+                                       : current_variable_set_list->set),
                                       flocp);
           no_default_sh_exe = 0;
         }
@@ -1547,15 +1648,14 @@ do_variable_definition (const floc *flocp, const char *varname,
         {
           char *tp = alloc_value;
 
-          alloc_value = allocated_variable_expand (newval);
+          alloc_value = allocated_expand_string (newval);
 
           if (find_and_set_default_shell (alloc_value))
             {
               v = define_variable_in_set (varname, strlen (varname), newval,
                                           origin, flavor == f_recursive,
-                                          (target_var
-                                           ? current_variable_set_list->set
-                                           : NULL),
+                                          (scope == s_global ? NULL
+                                           : current_variable_set_list->set),
                                           flocp);
               no_default_sh_exe = 0;
             }
@@ -1581,8 +1681,8 @@ do_variable_definition (const floc *flocp, const char *varname,
 
   v = define_variable_in_set (varname, strlen (varname), newval, origin,
                               flavor == f_recursive || flavor == f_expand,
-                              (target_var
-                               ? current_variable_set_list->set : NULL),
+                              (scope == s_global
+                               ? NULL : current_variable_set_list->set),
                               flocp);
   v->append = append;
   v->conditional = conditional;
@@ -1599,10 +1699,11 @@ do_variable_definition (const floc *flocp, const char *varname,
 
    If it is a variable definition, return a pointer to the char after the
    assignment token and set the following fields (only) of *VAR:
-    name   : name of the variable (ALWAYS SET) (NOT NUL-TERMINATED!)
-    length : length of the variable name
-    value  : value of the variable (nul-terminated)
-    flavor : flavor of the variable
+    name        : name of the variable (ALWAYS SET) (NOT NUL-TERMINATED!)
+    length      : length of the variable name
+    value       : value of the variable (nul-terminated)
+    flavor      : flavor of the variable
+    conditional : whether it's a conditional assignment
    Other values in *VAR are unchanged.
   */
 
@@ -1615,11 +1716,13 @@ parse_variable_definition (const char *str, struct variable *var)
   NEXT_TOKEN (p);
   var->name = (char *)p;
   var->length = 0;
+  var->conditional = 0;
 
   /* Walk through STR until we find a valid assignment operator.  Each time
      through this loop P points to the next character to consider.  */
   while (1)
     {
+      const char *start;
       int c = *p++;
 
       /* If we find a comment or EOS, it's not a variable definition.  */
@@ -1637,26 +1740,36 @@ parse_variable_definition (const char *str, struct variable *var)
           continue;
         }
 
+      /* This is the start of a token.  */
+      start = p - 1;
+
+      /* If we see a ? then it could be a conditional assignment. */
+      if (c == '?')
+        {
+          var->conditional = 1;
+          c = *p++;
+        }
+
       /* If we found = we're done!  */
       if (c == '=')
         {
           if (!end)
-            end = p - 1;
-          var->flavor = f_recursive;
+            end = start;
+          var->flavor = f_recursive; /* = */
           break;
         }
 
       if (c == ':')
         {
           if (!end)
-            end = p - 1;
+            end = start;
 
-          /* We need to distinguish :=, ::=, and :::=, and : outside of an
+          /* We need to distinguish :=, ::=, and :::=, versus : outside of an
              assignment (which means this is not a variable definition).  */
           c = *p++;
           if (c == '=')
             {
-              var->flavor = f_simple;
+              var->flavor = f_simple; /* := */
               break;
             }
           if (c == ':')
@@ -1664,12 +1777,12 @@ parse_variable_definition (const char *str, struct variable *var)
               c = *p++;
               if (c == '=')
                 {
-                  var->flavor = f_simple;
+                  var->flavor = f_simple; /* ::= */
                   break;
                 }
               if (c == ':' && *p++ == '=')
                 {
-                  var->flavor = f_expand;
+                  var->flavor = f_expand; /* :::= */
                   break;
                 }
             }
@@ -1682,20 +1795,17 @@ parse_variable_definition (const char *str, struct variable *var)
           switch (c)
             {
             case '+':
-              var->flavor = f_append;
-              break;
-            case '?':
-              var->flavor = f_conditional;
+              var->flavor = f_append; /* += */
               break;
             case '!':
-              var->flavor = f_shell;
+              var->flavor = f_shell; /* != */
               break;
             default:
               goto other;
             }
 
           if (!end)
-            end = p - 1;
+            end = start;
           ++p;
           break;
         }
@@ -1708,47 +1818,16 @@ parse_variable_definition (const char *str, struct variable *var)
         return NULL;
 
       if (c == '$')
-        {
-          /* Skip any variable reference, to ensure we don't treat chars
-             inside the reference as assignment operators.  */
-          char closeparen;
-          unsigned int count;
+        p = skip_reference (p);
 
-          c = *p++;
-          switch (c)
-            {
-            case '(':
-              closeparen = ')';
-              break;
-            case '{':
-              closeparen = '}';
-              break;
-            case '\0':
-              return NULL;
-            default:
-              /* '$$' or '$X': skip it.  */
-              continue;
-            }
-
-          /* P now points past the opening paren or brace.  Count parens or
-             braces until we find the closing paren/brace.  */
-          for (count = 1; *p != '\0'; ++p)
-            {
-              if (*p == closeparen && --count == 0)
-                {
-                  ++p;
-                  break;
-                }
-              if (*p == c)
-                ++count;
-            }
-        }
+      var->conditional = 0;
     }
 
   /* We found a valid variable assignment: END points to the char after the
      end of the variable name and P points to the char after the =.  */
   var->length = (unsigned int) (end - var->name);
   var->value = next_token (p);
+
   return (char *)p;
 }
 
@@ -1770,7 +1849,7 @@ assign_variable_definition (struct variable *v, const char *line)
   name = alloca (v->length + 1);
   memcpy (name, v->name, v->length);
   name[v->length] = '\0';
-  v->name = allocated_variable_expand (name);
+  v->name = allocated_expand_string (name);
 
   if (v->name[0] == '\0')
     O (fatal, &v->fileinfo, _("empty variable name"));
@@ -1793,7 +1872,7 @@ assign_variable_definition (struct variable *v, const char *line)
 
 struct variable *
 try_variable_definition (const floc *flocp, const char *line,
-                         enum variable_origin origin, int target_var)
+                         enum variable_origin origin, enum variable_scope scope)
 {
   struct variable v;
   struct variable *vp;
@@ -1806,8 +1885,8 @@ try_variable_definition (const floc *flocp, const char *line,
   if (!assign_variable_definition (&v, line))
     return 0;
 
-  vp = do_variable_definition (flocp, v.name, v.value,
-                               origin, v.flavor, target_var);
+  vp = do_variable_definition (flocp, v.name, v.value, origin, v.flavor,
+                               v.conditional, scope);
 
   free (v.name);
 
@@ -1834,22 +1913,42 @@ static const struct defined_vars defined_vars[] = {
   { STRING_SIZE_TUPLE ("-*-eval-flags-*-") },
   { STRING_SIZE_TUPLE ("VPATH") },
   { STRING_SIZE_TUPLE ("GPATH") },
+  { STRING_SIZE_TUPLE (WARNINGS_NAME) },
+  { STRING_SIZE_TUPLE (GNUMAKEFLAGS_NAME) },
   { NULL, 0 }
 };
 
 void
 warn_undefined (const char *name, size_t len)
 {
-  if (warn_undefined_variables_flag)
+  if (warn_check (wt_undefined_var))
     {
       const struct defined_vars *dp;
       for (dp = defined_vars; dp->name != NULL; ++dp)
         if (dp->len == len && memcmp (dp->name, name, len) == 0)
           return;
 
-      error (reading_file, len, _("warning: undefined variable '%.*s'"),
-             (int)len, name);
+      warning (wt_undefined_var, reading_file,
+               ONS (format, 0, _("reference to undefined variable '%.*s'"),
+                    (int)len, name));
     }
+}
+
+static void
+set_env_override (const void *item, void *arg UNUSED)
+{
+  struct variable *v = (struct variable *)item;
+  enum variable_origin old = env_overrides ? o_env : o_env_override;
+  enum variable_origin new = env_overrides ? o_env_override : o_env;
+
+  if (v->origin == old)
+    v->origin = new;
+}
+
+void
+reset_env_override ()
+{
+  hash_map_arg (&global_variable_set.table, set_env_override, NULL);
 }
 
 /* Print information for variable V, prefixing it with PREFIX.  */
@@ -1925,7 +2024,6 @@ print_variable (const void *item, void *arg)
     }
 }
 
-
 static void
 print_auto_variable (const void *item, void *arg)
 {
@@ -1935,7 +2033,6 @@ print_auto_variable (const void *item, void *arg)
     print_variable (item, arg);
 }
 
-
 static void
 print_noauto_variable (const void *item, void *arg)
 {
@@ -1944,7 +2041,6 @@ print_noauto_variable (const void *item, void *arg)
   if (v->origin != o_automatic)
     print_variable (item, arg);
 }
-
 
 /* Print all the variables in SET.  PREFIX is printed before
    the actual variable definitions (everything else is comments).  */
@@ -2017,18 +2113,18 @@ print_target_variables (const struct file *file)
     }
 }
 
-#ifdef WINDOWS32
+#if MK_OS_W32
 void
 sync_Path_environment ()
 {
   static char *environ_path = NULL;
   char *oldpath = environ_path;
-  char *path = allocated_variable_expand ("PATH=$(PATH)");
+  char *path = allocated_expand_string ("PATH=$(PATH)");
 
   if (!path)
     return;
 
-  /* Convert the value of PATH into something WINDOWS32 world can grok.
+  /* Convert the value of PATH into something Windows32 world can grok.
     Note: convert_Path_to_windows32 must see only the value of PATH,
     and see it from its first character, to do its tricky job.  */
   convert_Path_to_windows32 (path + CSTRLEN ("PATH="), ';');

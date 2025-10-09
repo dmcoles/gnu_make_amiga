@@ -1,0 +1,63 @@
+#!/bin/sh
+#
+# Copyright (C) 2014-2025 Free Software Foundation, Inc.
+# This file is part of GNU Make.
+#
+# Update GNU Make copyrights using gnulib update-copyright
+
+EXCLUDE='^\(\.[a-z].*\|.*/\.[a-z].*\|.*COPYING\|src/hash\.[ch]\|ChangeLog.*\|.*/ChangeLog.*\|INSTALL\|doc/make\.texi\|bootstrap\)$'
+
+update=${UPDATE_COPYRIGHT:-${GNULIB_SRCDIR:-../../gnulib}/build-aux/update-copyright}
+
+die () { echo "$*"; exit 1; }
+
+getfiles () {
+    git ls-files | grep -v "$EXCLUDE"
+}
+
+run () {
+    cmd=$(command -v "$update") || die "Cannot locate update-copyright ($update)"
+    test -x "$cmd" || die "Cannot locate update-copyright ($update)"
+
+    force=false
+
+    case $1 in
+        (-v) getfiles | sort; exit 0 ;;
+        (-f) force=true ;;
+        (--) : ;;
+        (-*) echo "usage: $0 [-v]"; exit 1 ;;
+    esac
+
+    if $force; then
+        : just do it
+    elif test ! -f src/makeint.h; then
+        die "Run in the root of the GNU Make workspace"
+    elif test -f configure; then
+        die "Run in a clean workspace (git clean -fdX)"
+    fi
+
+    # We use intervals
+    export UPDATE_COPYRIGHT_USE_INTERVALS=1
+
+    "$cmd" $(getfiles)
+
+    echo "*** Update doc/make.texi copyright by hand!"
+    echo "*** Update src/main.c:print_version() copyright by hand!"
+
+    exit 0
+}
+
+run "$@"
+
+# GNU Make is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 3 of the License, or (at your option) any later
+# version.
+#
+# GNU Make is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program.  If not, see <https://www.gnu.org/licenses/>.

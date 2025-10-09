@@ -1,5 +1,5 @@
 /* Miscellaneous global declarations and portability cruft for GNU Make.
-Copyright (C) 1988-2023 Free Software Foundation, Inc.
+Copyright (C) 1988-2025 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -44,12 +44,12 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
    Be sure to use the local one, and not one installed on the system.
    Define GMK_BUILDING_MAKE for proper selection of dllexport/dllimport
    declarations for MS-Windows.  */
-#ifdef WINDOWS32
+#if MK_OS_W32
 # define GMK_BUILDING_MAKE
 #endif
 #include "gnumake.h"
 
-#ifdef  CRAY
+#ifdef CRAY
 /* This must happen before #include <signal.h> so
    that the declaration therein is changed.  */
 # define signal bsdsignal
@@ -66,11 +66,6 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <stdio.h>
 #include <ctype.h>
 
-#ifdef HAVE_SYS_TIMEB_H
-/* SCO 3.2 "devsys 4.2" has a prototype for 'ftime' in <time.h> that bombs
-   unless <sys/timeb.h> has been included first.  */
-# include <sys/timeb.h>
-#endif
 #if HAVE_SYS_TIME_H
 # include <sys/time.h>
 #endif
@@ -93,7 +88,12 @@ extern int errno;
 # define MK_OS_ZOS 1
 #endif
 
+#if defined(__EMX__)
+# define MK_OS_OS2 1
+#endif
+
 #ifdef __VMS
+# define MK_OS_VMS 1
 /* In strict ANSI mode, VMS compilers should not be defining the
    VMS macro.  Define it here instead of a bulk edit for the correct code.
  */
@@ -102,11 +102,11 @@ extern int errno;
 # endif
 #endif
 
-#ifdef  HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 # include <unistd.h>
 /* Ultrix's unistd.h always defines _POSIX_VERSION, but you only get
    POSIX.1 behavior with 'cc -YPOSIX', which predefines POSIX itself!  */
-# if defined (_POSIX_VERSION) && !defined (ultrix) && !defined (VMS)
+# if defined (_POSIX_VERSION) && !defined (ultrix) && !MK_OS_VMS
 #  define POSIX 1
 # endif
 #endif
@@ -132,10 +132,10 @@ extern int errno;
 # include <vfork.h>
 #endif
 
-#ifdef  HAVE_LIMITS_H
+#ifdef HAVE_LIMITS_H
 # include <limits.h>
 #endif
-#ifdef  HAVE_SYS_PARAM_H
+#ifdef HAVE_SYS_PARAM_H
 # include <sys/param.h>
 #endif
 
@@ -149,15 +149,8 @@ extern int errno;
 # endif
 #endif
 
-#ifdef  PATH_MAX
-# define GET_PATH_MAX   PATH_MAX
-# define PATH_VAR(var)  char var[PATH_MAX+1]
-#else
-# define NEED_GET_PATH_MAX 1
-# define GET_PATH_MAX   (get_path_max ())
-# define PATH_VAR(var)  char *var = alloca (GET_PATH_MAX+1)
-unsigned int get_path_max (void);
-#endif
+#define GET_PATH_MAX   PATH_MAX
+#define PATH_VAR(var)  char var[PATH_MAX+1]
 
 #ifndef CHAR_BIT
 # define CHAR_BIT 8
@@ -165,6 +158,10 @@ unsigned int get_path_max (void);
 
 #ifndef USHRT_MAX
 # define USHRT_MAX 65535
+#endif
+
+#ifndef SIZE_MAX
+# define SIZE_MAX ((size_t)~(size_t)0)
 #endif
 
 /* Nonzero if the integer type T is signed.
@@ -197,7 +194,7 @@ unsigned int get_path_max (void);
 # define S_ISDIR(mode)  (((mode) & S_IFMT) == S_IFDIR)
 #endif
 
-#ifdef VMS
+#if MK_OS_VMS
 # include <fcntl.h>
 # include <types.h>
 # include <unixlib.h>
@@ -264,16 +261,16 @@ void exit (int) NORETURN;
 # define EXIT_FAILURE 1
 #endif
 
-#ifndef  ANSI_STRING
+#ifndef ANSI_STRING
 
 /* SCO Xenix has a buggy macro definition in <string.h>.  */
-#undef  strerror
+#undef strerror
 #if !defined(__DECC)
 char *strerror (int errnum);
 #endif
 
 #endif  /* !ANSI_STRING.  */
-#undef  ANSI_STRING
+#undef ANSI_STRING
 
 #if HAVE_INTTYPES_H
 # include <inttypes.h>
@@ -323,18 +320,13 @@ extern mode_t umask (mode_t);
 #define ISDIGIT(c) ((unsigned) (c) - '0' <= 9)
 
 /* Test if two strings are equal. Is this worthwhile?  Should be profiled.  */
-#define streq(a, b) \
-   ((a) == (b) || \
-    (*(a) == *(b) && (*(a) == '\0' || !strcmp ((a) + 1, (b) + 1))))
+#define streq(a, b) (*(a) == *(b) && (*(a) == '\0' || !strcmp ((a) + 1, (b) + 1)))
 
 /* Test if two strings are equal, but match case-insensitively on systems
    which have case-insensitive filesystems.  Should only be used for
    filenames!  */
 #ifdef HAVE_CASE_INSENSITIVE_FS
-# define patheq(a, b) \
-    ((a) == (b) \
-     || (tolower((unsigned char)*(a)) == tolower((unsigned char)*(b)) \
-         && (*(a) == '\0' || !strcasecmp ((a) + 1, (b) + 1))))
+# define patheq(a, b) (strcasecmp ((a), (b)) == 0)
 #else
 # define patheq(a, b) streq(a, b)
 #endif
@@ -366,7 +358,7 @@ extern mode_t umask (mode_t);
 # include <direct.h>
 #endif
 
-#ifdef WINDOWS32
+#if MK_OS_W32
 # include <fcntl.h>
 # include <malloc.h>
 # define pipe(_p)        _pipe((_p), 512, O_BINARY)
@@ -399,7 +391,7 @@ extern int unixy_shell;
 # ifndef WIN32_LEAN_AND_MEAN
 #  define WIN32_LEAN_AND_MEAN
 # endif
-#endif  /* WINDOWS32 */
+#endif  /* MK_OS_W32 */
 
 /* ALL_SET() evaluates the second argument twice.  */
 #define ANY_SET(_v,_m)  (((_v)&(_m)) != 0)
@@ -426,7 +418,7 @@ extern int unixy_shell;
 /* The set of characters which are directory separators is OS-specific.  */
 #define MAP_DIRSEP      0x8000
 
-#ifdef VMS
+#if MK_OS_VMS
 # define MAP_VMSCOMMA   MAP_COMMA
 #else
 # define MAP_VMSCOMMA   0x0000
@@ -443,7 +435,7 @@ extern int unixy_shell;
 # define PATH_SEPARATOR_CHAR ';'
 # define MAP_PATHSEP    MAP_SEMI
 #elif !defined(PATH_SEPARATOR_CHAR)
-# if defined (VMS)
+# if MK_OS_VMS
 #  define PATH_SEPARATOR_CHAR (vms_comma_separator ? ',' : ':')
 #  define MAP_PATHSEP    (vms_comma_separator ? MAP_COMMA : MAP_SEMI)
 # else
@@ -497,6 +489,9 @@ extern struct rlimit stack_limit;
 
 #define NILF ((floc *)0)
 
+/* Number of elements in an array.  */
+#define ARRAYLEN(_a)          (sizeof (_a) / sizeof ((_a)[0]))
+
 /* Number of characters in a string constant.  Does NOT include the \0 byte.  */
 #define CSTRLEN(_s)           (sizeof (_s)-1)
 
@@ -516,7 +511,7 @@ extern struct rlimit stack_limit;
 # define TTYNAME(_f) DEFAULT_TTYNAME
 #endif
 
-#ifdef VMS
+#if MK_OS_VMS
 # define DEFAULT_TMPDIR     "/sys$scratch/"
 #elif defined(P_tmpdir)
 # define DEFAULT_TMPDIR     P_tmpdir
@@ -544,6 +539,8 @@ void error (const floc *flocp, size_t length, const char *fmt, ...)
             ATTRIBUTE ((__format__ (__printf__, 3, 4)));
 void fatal (const floc *flocp, size_t length, const char *fmt, ...)
             ATTRIBUTE ((noreturn, __format__ (__printf__, 3, 4)));
+char *format (const char *prefix, size_t length, const char *fmt, ...)
+              ATTRIBUTE ((__format__ (__printf__, 3, 4)));
 void out_of_memory (void) NORETURN;
 
 /* When adding macros to this list be sure to update the value of
@@ -591,6 +588,7 @@ char *xstrndup (const char *, size_t);
 char *find_next_token (const char **, size_t *);
 char *next_token (const char *);
 char *end_of_token (const char *);
+char *skip_reference (const char *);
 void collapse_continuations (char *);
 char *lindex (const char *, const char *, int);
 int alpha_compare (const void *, const void *);
@@ -622,7 +620,7 @@ typedef intmax_t (*ar_member_func_t) (int desc, const char *mem, int truncated,
 intmax_t ar_scan (const char *archive, ar_member_func_t function,
                   const void *arg);
 int ar_name_equal (const char *name, const char *mem, int truncated);
-#ifndef VMS
+#if !MK_OS_VMS
 int ar_member_touch (const char *arname, const char *memname);
 #endif
 #endif
@@ -665,9 +663,9 @@ const char *strcache_add_len (const char *str, size_t len);
 int guile_gmake_setup (const floc *flocp);
 
 /* Loadable object support.  Sets to the strcached name of the loaded file.  */
-typedef int (*load_func_t)(const floc *flocp);
 int load_file (const floc *flocp, struct file *file, int noerror);
 int unload_file (const char *name);
+void unload_all (void);
 
 /* Maintainer mode support */
 #ifdef MAKE_MAINTAINER_MODE
@@ -684,14 +682,14 @@ void dbg (const char *fmt, ...);
 /* We omit these declarations on non-POSIX systems which define _POSIX_VERSION,
    because such systems often declare them in header files anyway.  */
 
-#if !defined (__GNU_LIBRARY__) && !defined (POSIX) && !defined (_POSIX_VERSION) && !defined(WINDOWS32)
+#if !defined (__GNU_LIBRARY__) && !defined (POSIX) && !defined (_POSIX_VERSION) && !MK_OS_W32
 
-# ifndef VMS
+# if !MK_OS_VMS
 long int lseek ();
 # endif
 
-# ifdef  HAVE_GETCWD
-#  if !defined(VMS) && !defined(__DECC) && !defined(_AMIGA)
+# ifdef HAVE_GETCWD
+#  if !MK_OS_VMS && !defined(__DECC) && !defined(_AMIGA)
 char *getcwd (void);
 #  endif
 # else
@@ -733,10 +731,10 @@ extern unsigned short stopchar_map[];
 extern int just_print_flag, run_silent, ignore_errors_flag, keep_going_flag;
 extern int print_data_base_flag, question_flag, touch_flag, always_make_flag;
 extern int env_overrides, no_builtin_rules_flag, no_builtin_variables_flag;
-extern int print_version_flag, check_symlink_flag;
-extern int warn_undefined_variables_flag, posix_pedantic;
+extern int print_version_flag, check_symlink_flag, posix_pedantic;
 extern int not_parallel, second_expansion, clock_skew_detected;
 extern int rebuilding_makefiles, one_shell, output_sync, verify_flag;
+extern int export_all_variables;
 extern unsigned long command_count;
 
 extern const char *default_shell;
@@ -747,17 +745,23 @@ extern int batch_mode_shell;
 #define GNUMAKEFLAGS_NAME       "GNUMAKEFLAGS"
 #define MAKEFLAGS_NAME          "MAKEFLAGS"
 
+#define MAKELEVEL_NAME "MAKELEVEL"
+#define MAKELEVEL_LENGTH (CSTRLEN (MAKELEVEL_NAME))
+
 /* Resetting the command script introduction prefix character.  */
 #define RECIPEPREFIX_NAME       ".RECIPEPREFIX"
 #define RECIPEPREFIX_DEFAULT    '\t'
 extern char cmd_prefix;
 
+/* Setting warning actions.  */
+#define WARNINGS_NAME           ".WARNINGS"
+
 extern unsigned int no_intermediates;
 
 #if HAVE_MKFIFO
 /* It seems that mkfifo() is not working correctly, or at least not the way
-   GNU make wants it to work, on GNU/Hurd and Cygwin so don't use it there.  */
-# if !defined(JOBSERVER_USE_FIFO) && !MK_OS_HURD && !MK_OS_CYGWIN
+   GNU make wants it to work, on: GNU/Hurd, Cygwin, OS2; don't use it there.  */
+# if !defined(JOBSERVER_USE_FIFO) && !MK_OS_HURD && !MK_OS_CYGWIN && !MK_OS_OS2
 #  define JOBSERVER_USE_FIFO 1
 # endif
 #endif
@@ -770,7 +774,7 @@ extern double max_load_average;
 
 extern const char *program;
 
-#ifdef VMS
+#if MK_OS_VMS
 const char *vms_command (const char *argv0);
 const char *vms_progname (const char *argv0);
 
@@ -837,7 +841,7 @@ extern volatile sig_atomic_t handling_fatal_signal;
 #endif
 
 #ifndef initialize_main
-# ifdef __EMX__
+# if MK_OS_OS2
 #  define initialize_main(pargc, pargv) \
                           { _wildcard(pargc, pargv); _response(pargc, pargv); }
 # else
@@ -845,7 +849,7 @@ extern volatile sig_atomic_t handling_fatal_signal;
 # endif
 #endif
 
-#ifdef __EMX__
+#if MK_OS_OS2
 # if !defined chdir
 #  define chdir _chdir2
 # endif
