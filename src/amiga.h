@@ -14,5 +14,5 @@ A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
-int MyExecute (char ** argv);
+int MyExecute (char ** argv, char **envp);
 char * wildcard_expansion (char * wc, char * o);

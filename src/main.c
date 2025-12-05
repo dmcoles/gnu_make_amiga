@@ -29,7 +29,10 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <assert.h>
 #ifdef _AMIGA
 # include <dos/dos.h>
+# include <dos/dosextens.h>
 # include <proto/dos.h>
+# include <dos/var.h>
+# include <proto/exec.h>
 #endif
 #ifdef WINDOWS32
 # include <windows.h>
@@ -1563,9 +1566,13 @@ main (int argc, char **argv, char **envp)
     BPTR env, file, old;
     char buffer[1024];
     int len;
+		struct Process *proc;
+		struct MinList *localvars;
+		struct LocalVar *localvar;
+		char *varval;
     __aligned struct FileInfoBlock fib;
 
-    env = Lock ("ENV:", ACCESS_READ);
+    /*env = Lock ("ENV:", ACCESS_READ);
     if (env)
       {
         old = CurrentDir (DupLock (env));
@@ -1573,10 +1580,11 @@ main (int argc, char **argv, char **envp)
 
         while (ExNext (env, &fib))
           {
-            if (fib.fib_DirEntryType < 0) /* File */
+            if (fib.fib_DirEntryType < 0) // File 
               {
-                /* Define an empty variable. It will be filled in
-                   variable_lookup(). Makes startup quite a bit faster. */
+                // Define an empty variable. It will be filled in
+                //   variable_lookup(). Makes startup quite a bit faster. 
+							//		 printf("define env: %s\n",fib.fib_FileName);
                 define_variable (fib.fib_FileName,
                                  strlen (fib.fib_FileName),
                                  "", o_env, 1)->export = v_export;
@@ -1584,7 +1592,29 @@ main (int argc, char **argv, char **envp)
           }
         UnLock (env);
         UnLock (CurrentDir (old));
-      }
+      }*/
+
+		proc = (struct Process *)FindTask(0);
+		localvars = &proc->pr_LocalVars;
+		localvar = (struct LocalVar *)localvars->mlh_Head;
+		while (localvar && localvar->lv_Node.ln_Succ != localvars)
+		{
+			 if (localvar->lv_Node.ln_Type==LV_VAR)
+			 {
+				 
+					 printf("define local: %s\n",localvar->lv_Node.ln_Name);
+					 varval = xmalloc (localvar->lv_Len+1);
+					 strncpy(varval,localvar->lv_Value,localvar->lv_Len);
+					 varval[localvar->lv_Len] = 0;
+
+
+								define_variable (localvar->lv_Node.ln_Name,
+																 strlen (localvar->lv_Node.ln_Name),
+																 varval, o_env, 1)->export = v_export;
+					 free (varval);
+			 }
+			localvar = (struct LocalVar *)localvar->lv_Node.ln_Succ;
+		}			
   }
 #endif
 

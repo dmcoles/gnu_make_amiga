@@ -32,17 +32,27 @@ void memory_full() {
   abort();
 }
 
-static const char Amiga_version[] = "$VER: Make 4.4.1 (28.04.25) \n"
+static const char Amiga_version[] = "$VER: Make 4.4.1 (05.12.25) \n"
                     "Amiga Port by A. Digulla (digulla@home.lake.de)\n"
                     "Updates by Darren Coles\n";
 
 int
-MyExecute (char **argv)
+MyExecute (char **argv, char **envp)
 {
     char * buffer, * ptr;
     char ** aptr;
+		char **ep, * p;
+		
     int len = 0;
     int status;
+
+		if (envp)
+						for (ep = envp; *ep; ep++) {
+							p = strstr (*ep, "=");
+              *p = 0;
+							SetVar(*ep,p+1,-1,LV_VAR|GVF_LOCAL_ONLY);
+							*p = '=';
+						}
 
     for (aptr=argv; *aptr; aptr++)
     {
@@ -82,6 +92,16 @@ MyExecute (char **argv)
         TAG_END);
 
     FreeMem (buffer, len);
+
+		/*if (envp)
+						for (ep = envp; *ep; ep++) {
+							p = strstr (*ep, "=");
+              *p = 0;
+							DeleteVar(*ep,LV_VAR|GVF_LOCAL_ONLY);
+							printf("deletevar %s\n",*ep);
+							*p = '=';
+						}*/
+
 
     if (SetSignal (0L,0L) & SIGBREAKF_CTRL_C)
         status = 20;

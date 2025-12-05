@@ -17,6 +17,10 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "makeint.h"
 
 #include <assert.h>
+#ifdef _AMIGA
+# include <dos/dos.h>
+# include <proto/dos.h>
+#endif
 
 #include "filedef.h"
 #include "debug.h"
@@ -461,6 +465,7 @@ lookup_variable (const char *name, size_t length)
 {
   const struct variable_set_list *setlist;
   struct variable var_key;
+  char *value;
   int is_parent = 0;
 
   var_key.name = (char *) name;
@@ -473,6 +478,35 @@ lookup_variable (const char *name, size_t length)
       struct variable *v;
 
       v = hash_find_item ((struct hash_table *) &set->table, &var_key);
+
+#ifdef _AMIGA
+		{
+		
+			char *vname = (char *) alloca (length + 1);
+			char *value;
+			struct LocalVar *lv;
+			
+			if (v->origin == o_env)
+			{
+				if (!strlen(v->value))
+				{
+					strncpy (vname, name, length);
+					vname[length] = 0;
+					
+					lv = FindVar(vname,LV_VAR|GVF_GLOBAL_ONLY);
+					if (lv) {
+						value = (char *)alloca(lv->lv_Len+1);
+						strncpy (value, lv->lv_Value, lv->lv_Len);
+						vname[lv->lv_Len] = 0;
+						
+						free (v->value);
+						v->value = xstrdup (value);
+					}
+				}
+			}
+		}
+#endif
+
       if (v && (!is_parent || !v->private_var))
         return v->special ? lookup_special_var (v) : v;
 
