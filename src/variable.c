@@ -523,7 +523,7 @@ lookup_variable (const char *name, size_t length)
 
       v = hash_find_item ((struct hash_table *) &set->table, &var_key);
 
-#ifdef _AMIGA
+/*#ifdef _AMIGA
 		{
 		
 			char *vname = alloca (length + 1);
@@ -549,7 +549,7 @@ lookup_variable (const char *name, size_t length)
 				}
 			}
 		}
-#endif
+#endif*/
 
       if (v && (!is_parent || !v->private_var))
         return v->special ? lookup_special_var (v) : v;
