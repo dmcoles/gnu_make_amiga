@@ -33,7 +33,7 @@ HANDLE main_thread;
 #elif defined (_AMIGA)
 
 const char *default_shell = "";
-extern int MyExecute (char **);
+extern int MyExecute (char **, char **);
 int batch_mode_shell = 0;
 
 #elif MK_OS_DOS
@@ -1420,7 +1420,7 @@ start_job_command (struct child *child)
 
   child->deleted = 0;
 
-#ifndef _AMIGA
+//#ifndef _AMIGA
   /* Set up the environment for the child.
      It's a slight inaccuracy to set the environment for recursive make even
      for command lines that aren't recursive, but I don't want to have to
@@ -1430,7 +1430,8 @@ start_job_command (struct child *child)
    */
   if (child->environment == 0)
     child->environment = target_environment (child->file,
-#endif                                             child->file->cmds->any_recurse);
+                                             child->file->cmds->any_recurse);
+//#endif
 
 #if !MK_OS_DOS && !MK_OS_W32 && !defined(_AMIGA)
 
@@ -1539,7 +1540,7 @@ start_job_command (struct child *child)
   }
 #endif /* MK_OS_DOS */
 #ifdef _AMIGA
-  amiga_status = MyExecute (argv);
+  amiga_status = MyExecute (argv,child->environment);
 
   ++dead_children;
   child->pid = amiga_pid++;
@@ -2713,9 +2714,9 @@ exec_command (char **argv, char **envp)
 
 #else /* On Amiga */
 void
-exec_command (char **argv)
+exec_command (char **argv, char **envp)
 {
-  MyExecute (argv);
+  MyExecute (argv, envp);
 }
 
 void clean_tmp (void)

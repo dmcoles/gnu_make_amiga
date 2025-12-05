@@ -81,7 +81,7 @@ char **construct_command_argv (char *line, char **restp, struct file *file,
 pid_t child_execute_job (struct childbase *child, int good_stdin, char **argv);
 
 #ifdef _AMIGA
-void exec_command (char **argv) NORETURN;
+void exec_command (char **argv, char **envp) NORETURN;
 #else
  pid_t exec_command (char **argv, char **envp);
 #endif
