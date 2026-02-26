@@ -32,7 +32,7 @@ void memory_full() {
   abort();
 }
 
-static const char Amiga_version[] = "$VER: Make 4.4.1 (05.12.25) \n"
+static const char Amiga_version[] = "$VER: Make 4.4.1 (26.02.26) \n"
                     "Amiga Port by A. Digulla (digulla@home.lake.de)\n"
                     "Updates by Darren Coles\n";
 

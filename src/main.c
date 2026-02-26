@@ -1602,7 +1602,6 @@ main (int argc, char **argv, char **envp)
 			 if (localvar->lv_Node.ln_Type==LV_VAR)
 			 {
 				 
-					 printf("define local: %s\n",localvar->lv_Node.ln_Name);
 					 varval = xmalloc (localvar->lv_Len+1);
 					 strncpy(varval,localvar->lv_Value,localvar->lv_Len);
 					 varval[localvar->lv_Len] = 0;
